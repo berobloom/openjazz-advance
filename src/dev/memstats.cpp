@@ -11,8 +11,9 @@
  *
  * @par Description:
  * Developer tool for sizing the Game Boy Advance port. Tracks heap usage by
- * replacing the C allocator, then loads every level, bonus level and cutscene
- * in turn and reports how much memory each one needs. Linux/glibc only.
+ * replacing the C allocator, then loads everything in the game directory in
+ * turn (see sweep.cpp) and reports how much memory each item needs.
+ * Linux/glibc only.
  *
  */
 
@@ -21,21 +22,15 @@
 
 #include <algorithm>
 #include <atomic>
-#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <functional>
-#include <dirent.h>
 #include <execinfo.h>
 #include <malloc.h>
 #include <vector>
 
-#include "game/game.h"
-#include "jj1/bonuslevel/jj1bonuslevel.h"
-#include "jj1/level/jj1level.h"
-#include "jj1/scene/jj1scene.h"
-#include "io/log.h"
+#include "sweep.h"
 
 long soundMemory ();
 
@@ -148,28 +143,6 @@ struct Sample {
 	bool failed;
 };
 
-static bool matches (const char* name, const char* prefix, int digits) {
-
-	size_t len = strlen(prefix);
-
-	if (strncasecmp(name, prefix, len) != 0) return false;
-	if (strlen(name) != len + digits) return false;
-
-	for (int i = 0; i < digits; i++)
-		if (!isdigit(static_cast<unsigned char>(name[len + i]))) return false;
-
-	return true;
-
-}
-
-static bool isScene (const char* name) {
-
-	size_t len = strlen(name);
-
-	return len > 4 && strcasecmp(name + len - 4, ".0SC") == 0;
-
-}
-
 static void reportDetail (const char* name) {
 
 	std::vector<size_t> sizes;
@@ -199,8 +172,7 @@ static void reportDetail (const char* name) {
 
 }
 
-template <typename Load>
-static Sample measure (const char* name, Load load) {
+static Sample measure (const char* name, const SweepLoad& load) {
 
 	const char* detailName = getenv("OJ_MEMSTATS_DETAIL");
 	bool wantDetail = detailName && strcasecmp(detailName, name) == 0;
@@ -264,64 +236,20 @@ static void report (const char* title, std::vector<Sample>& samples) {
 
 int memstatsSweep (const char* gameDir) {
 
-	std::vector<char*> names;
-
-	DIR* dir = opendir(gameDir);
-	if (!dir) {
-		LOG_ERROR("memstats: cannot open '%s'", gameDir);
-		return 1;
-	}
-
-	while (struct dirent* entry = readdir(dir))
-		names.push_back(strdup(entry->d_name));
-
-	closedir(dir);
-
-	std::sort(names.begin(), names.end(),
-		[](const char* a, const char* b) { return strcasecmp(a, b) < 0; });
-
 	baseline = heapCurrent;
 	baselineSound = soundMemory();
 	printf("memstats: engine baseline heap %ld, of which sound %ld\n", baseline, baselineSound);
 
-	std::vector<Sample> levels, bonuses, scenes;
-	LocalGame game("LEVEL0.000", difficultyType::Normal);
+	std::vector<Sample> samples[SWEEP_TYPES];
 
-	for (char* name : names) {
+	bool ok = sweepGameData(gameDir, [&](const char* name, SweepType type, const SweepLoad& load) {
+		samples[type].push_back(measure(name, load));
+	});
 
-		// LEVELx.yyy, where x is the level and yyy the world
-		if (strlen(name) == 10 && strncasecmp(name, "LEVEL", 5) == 0 &&
-			isdigit(static_cast<unsigned char>(name[5])) && name[6] == '.' &&
-			matches(name + 7, "", 3)) {
+	if (!ok) return 1;
 
-			levels.push_back(measure(name, [&]() {
-				JJ1Level* level = new JJ1Level(&game, name, false, false);
-				return [level]() { delete level; };
-			}));
-
-		} else if (matches(name, "BONUSMAP.", 3)) {
-
-			bonuses.push_back(measure(name, [&]() {
-				JJ1BonusLevel* level = new JJ1BonusLevel(&game, name, false);
-				return [level]() { delete level; };
-			}));
-
-		} else if (isScene(name)) {
-
-			scenes.push_back(measure(name, [&]() {
-				JJ1Scene* scene = new JJ1Scene(name);
-				return [scene]() { delete scene; };
-			}));
-
-		}
-
-	}
-
-	report("Levels", levels);
-	report("Bonus levels", bonuses);
-	report("Cutscenes", scenes);
-
-	for (char* name : names) free(name);
+	for (int type = 0; type < SWEEP_TYPES; type++)
+		report(sweepTypeNames[type], samples[type]);
 
 	return 0;
 

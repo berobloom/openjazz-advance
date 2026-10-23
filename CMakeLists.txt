@@ -256,12 +256,25 @@ if(ENABLE_JJ2)
 endif()
 
 option(MEMSTATS "Developer tool: heap tracking and level sweep for sizing ports (glibc only)" OFF)
-mark_as_advanced(MEMSTATS)
+option(BAKE "Developer tool: build the baked game data pack for ports with little RAM" OFF)
+mark_as_advanced(MEMSTATS BAKE)
+if(MEMSTATS OR BAKE)
+	target_sources(OpenJazz PRIVATE
+		src/dev/sweep.cpp
+		src/dev/sweep.h)
+endif()
 if(MEMSTATS)
 	target_sources(OpenJazz PRIVATE
 		src/dev/memstats.cpp
 		src/dev/memstats.h)
 	target_compile_definitions(OpenJazz PRIVATE OJ_MEMSTATS)
+endif()
+if(BAKE)
+	target_sources(OpenJazz PRIVATE
+		src/dev/bake.cpp
+		src/dev/bake.h
+		src/io/bakepack.h)
+	target_compile_definitions(OpenJazz PRIVATE OJ_BAKE)
 endif()
 
 # version

@@ -60,6 +60,9 @@
 #if OJ_MEMSTATS
 	#include "dev/memstats.h"
 #endif
+#if OJ_BAKE
+	#include "dev/bake.h"
+#endif
 
 #if !OJ_SDL3
 	// Define some stuff to be SDL3 compatible
@@ -410,6 +413,14 @@ int play () {
 	// Developer sweep for sizing the GBA port; see dev/memstats.cpp
 	if (const char* memstatsDir = getenv("OJ_MEMSTATS"))
 		return memstatsSweep(memstatsDir);
+#endif
+
+#if OJ_BAKE
+	// Developer tool building the baked data pack; see dev/bake.cpp
+	if (const char* bakeDir = getenv("OJ_BAKE")) {
+		const char* bakeOut = getenv("OJ_BAKE_OUT");
+		return bakeSweep(bakeDir, bakeOut ? bakeOut : "ojpack.bin");
+	}
 #endif
 
 	// Start the opening music

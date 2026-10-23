@@ -41,6 +41,9 @@
 #include "loop.h"
 #include "util.h"
 #include "io/log.h"
+#if OJ_BAKE
+	#include "dev/bake.h"
+#endif
 
 #include <string.h>
 
@@ -349,6 +352,12 @@ int JJ1Level::loadTiles (char* fileName) {
 	int tiles = 0;
 	unsigned char* pixels[TSETS * TNUM] = {0};
 
+#if OJ_BAKE
+	// Recorded below as a whole, rather than tile by tile
+	int tilesOffset = file->tell();
+	bakeSuspend(true);
+#endif
+
 	for (int i = 0; i < TSETS; i++) {
 		// Check if this tileset is enabled
 		char * marker = file->loadString(2);
@@ -364,6 +373,10 @@ int JJ1Level::loadTiles (char* fileName) {
 		}
 		delete[] marker;
 	}
+
+#if OJ_BAKE
+	bakeSuspend(false);
+#endif
 
 	if (file->getSize() != file->tell()) {
 		LOG_WARN("Tileset data is corrupted");
@@ -386,6 +399,12 @@ int JJ1Level::loadTiles (char* fileName) {
 
 	tileSet = video.createSurface(buffer, TTOI(1), TTOI(tiles));
 	video.enableColorKey(tileSet, TKEY);
+
+#if OJ_BAKE
+	bakeRecord(fileName, tilesOffset, tilesOffset, file->tell(), BAKE_TILESET, 0,
+		buffer, TTOI(1) * TTOI(tiles));
+#endif
+
 	delete[] buffer;
 
 #if OJ_DEBUG

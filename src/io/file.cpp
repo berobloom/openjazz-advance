@@ -30,6 +30,10 @@
 #include "util.h"
 #include "io/log.h"
 
+#if OJ_BAKE
+	#include "dev/bake.h"
+#endif
+
 #include "SDL_wrapper.h"
 #include <string.h>
 #include <unistd.h>
@@ -63,7 +67,12 @@ File::File (const char* name, int pathType, bool write) :
 
 		// only allow certain write paths
 		if (!write || (pathType & (PATH_TYPE_CONFIG|PATH_TYPE_TEMP)) > 0) {
-			if (open(path->path, name, write)) return;
+			if (open(path->path, name, write)) {
+#if OJ_BAKE
+				if (!write && (pathType & PATH_TYPE_GAME)) bakeOpened(filePath, getSize());
+#endif
+				return;
+			}
 		} else LOG_FATAL("Not allowed to write to %s", name);
 
 		path = path->next;
@@ -418,6 +427,9 @@ unsigned char * File::loadBlock (int length) {
  */
 unsigned char* File::loadRLE (int length, bool checkSize) {
 	int size = 0;
+#if OJ_BAKE
+	int offset = tell();
+#endif
 
 	if (checkSize) {
 		// Determine the offset that follows the block
@@ -426,6 +438,10 @@ unsigned char* File::loadRLE (int length, bool checkSize) {
 	int start = tell();
 
 	unsigned char* buffer = new unsigned char[length];
+#if OJ_BAKE
+	// Blocks that end early would otherwise bake in uninitialised bytes
+	memset(buffer, 0, length);
+#endif
 
 	int pos = 0;
 	while (pos < length) {
@@ -458,6 +474,11 @@ unsigned char* File::loadRLE (int length, bool checkSize) {
 	} else {
 		LOG_MAX("RLE block was %d bytes long", tell() - start);
 	}
+
+#if OJ_BAKE
+	// The size prefix stays in the file, for skipRLE()
+	bakeRecord(filePath, offset, start, tell(), BAKE_RLE, 0, buffer, length);
+#endif
 
 	return buffer;
 
@@ -607,6 +628,10 @@ unsigned char* File::loadPixels  (int length) {
 
 	sorted = new unsigned char[length];
 
+#if OJ_BAKE
+	int offset = tell();
+#endif
+
 	pixels = loadBlock(length);
 
 	// Rearrange pixels in correct order
@@ -617,6 +642,10 @@ unsigned char* File::loadPixels  (int length) {
 	}
 
 	delete[] pixels;
+
+#if OJ_BAKE
+	bakeRecord(filePath, offset, offset, tell(), BAKE_PIXELS, 0, sorted, length);
+#endif
 
 	return sorted;
 
@@ -641,6 +670,10 @@ unsigned char* File::loadPixels (int length, int key) {
 
 	sorted = new unsigned char[length];
 	pixels = new unsigned char[length];
+
+#if OJ_BAKE
+	int offset = tell();
+#endif
 
 
 	// Read the mask
@@ -686,6 +719,10 @@ unsigned char* File::loadPixels (int length, int key) {
 	}
 
 	delete[] pixels;
+
+#if OJ_BAKE
+	bakeRecord(filePath, offset, offset, tell(), BAKE_MASKED_PIXELS, key, sorted, length);
+#endif
 
 	return sorted;
 
