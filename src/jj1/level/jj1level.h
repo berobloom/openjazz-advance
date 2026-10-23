@@ -36,6 +36,8 @@
 #include "io/gfx/anim.h"
 #include "OpenJazz.h"
 
+#include <vector>
+
 
 // Constants
 
@@ -143,16 +145,26 @@
 
 // Datatypes
 
-/// JJ1 level grid element
-typedef struct {
+/// JJ1 level grid element, laid out as in the level file
+struct GridElement {
 
 	unsigned char tile; ///< Indexes the tile set
-	unsigned char bg; ///< 0 = Effect background, 1 = Black background
-	unsigned char event; ///< Indexes the event set
-	unsigned char hits; ///< Number of times the event has been shot
-	int           time; ///< Point at which the event will do something, e.g. terminate
+	unsigned char flags; ///< Bits 0-6: Index into the event set, bit 7: Black background
 
-} GridElement;
+	unsigned char event () const { return flags & 127; } ///< Indexes the event set
+	bool bg () const { return flags >> 7; } ///< false = Effect background, true = Black background
+	void setEvent (unsigned char newEvent) { flags = (flags & 128) | (newEvent & 127); }
+
+};
+
+/// State of the event on a grid element, kept only for the few elements whose event has been shot or timed
+typedef struct {
+
+	unsigned short cell; ///< Grid element, y * LW + x
+	unsigned char  hits; ///< Number of times the event has been shot
+	unsigned int   time; ///< Point at which the event will do something, e.g. terminate
+
+} JJ1EventState;
 
 /// JJ1 level event type
 typedef struct {
@@ -217,8 +229,9 @@ class JJ1Level : public Level {
 		signed char   bulletSet[BULLETS][BLENGTH]; ///< Bullet types
 		char          levelSounds[JJ1LSOUNDS]; ///< Level sounds
 		JJ1EventType  eventSet[EVENTS]; ///< Event types
-		char          mask[240][64]; ///< Tile masks. At most 240 tiles, all with 8 * 8 masks
-		GridElement   grid[LH][LW]; ///< Level grid. All levels are the same size
+		unsigned char mask[256][8]; ///< Tile masks, as in the level file. Bit x of byte y is solidity at (x, y) of 8 * 8
+		GridElement   grid[LW][LH]; ///< Level grid, by column. All levels are the same size
+		std::vector<JJ1EventState> eventStates; ///< Event states, ordered by grid element
 		SDL_Color     skyPalette[MAX_PALETTE_COLORS]; ///< Full palette for sky background
 		bool          sky; ///< Whether or not to use sky background
 		unsigned char skyOrb; ///< The tile to use as the background sun/moon/etc.
@@ -244,6 +257,10 @@ class JJ1Level : public Level {
 		int  loadSprites  (char* fileName);
 		int  loadTiles    (char* fileName);
 		int  playBonus    ();
+
+		JJ1EventState* findEventState (unsigned char gridX, unsigned char gridY);
+		JJ1EventState& eventState     (unsigned char gridX, unsigned char gridY);
+		void           setEventHits   (unsigned char gridX, unsigned char gridY, unsigned char hits);
 
 	protected:
 		Font* font; ///< On-screen message font

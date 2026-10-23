@@ -53,6 +53,7 @@
 #include "io/log.h"
 #include "util.h"
 
+#include <algorithm>
 #include <string.h>
 
 
@@ -175,13 +176,13 @@ bool JJ1Level::checkMaskUp (fixed x, fixed y) {
 	if ((x < 0) || (y < 0) || (x >= TTOF(LW)) || (y >= TTOF(LH)))
 		return true;
 
-	ge = grid[FTOT(y)] + FTOT(x);
+	ge = &grid[FTOT(x)][FTOT(y)];
 
 	// JJ1Event 122 is one-way
-	if (ge->event == 122) return false;
+	if (ge->event() == 122) return false;
 
 	// Check the mask in the tile in question
-	return mask[ge->tile][((y >> 9) & 56) + ((x >> 12) & 7)];
+	return (mask[ge->tile][(y >> 12) & 7] >> ((x >> 12) & 7)) & 1;
 
 }
 
@@ -201,7 +202,7 @@ bool JJ1Level::checkMaskDown (fixed x, fixed y) {
 		return true;
 
 	// Check the mask in the tile in question
-	return mask[grid[FTOT(y)][FTOT(x)].tile][((y >> 9) & 56) + ((x >> 12) & 7)];
+	return (mask[grid[FTOT(x)][FTOT(y)].tile][(y >> 12) & 7] >> ((x >> 12) & 7)) & 1;
 
 }
 
@@ -220,15 +221,15 @@ bool JJ1Level::checkSpikes (fixed x, fixed y) {
 
 	// Anything off the edge of the map is not spikes
 	// Ignore the bottom, as it is deadly anyway
-	if ((x < 0) || (y < 0) || (x > TTOF(LW))) return false;
+	if ((x < 0) || (y < 0) || (x >= TTOF(LW))) return false;
 
-	ge = grid[FTOT(y)] + FTOT(x);
+	ge = &grid[FTOT(x)][FTOT(y)];
 
 	// JJ1Event 126 is spikes
-	if (ge->event != 126) return false;
+	if (ge->event() != 126) return false;
 
 	// Check the mask in the tile in question
-	return mask[ge->tile][((y >> 9) & 56) + ((x >> 12) & 7)];
+	return (mask[ge->tile][(y >> 12) & 7] >> ((x >> 12) & 7)) & 1;
 
 }
 
@@ -287,7 +288,7 @@ void JJ1Level::setNext (int nextLevel, int nextWorld) {
  */
 void JJ1Level::setTile (unsigned char gridX, unsigned char gridY, unsigned char tile) {
 
-	grid[gridY][gridX].tile = tile;
+	grid[gridX][gridY].tile = tile;
 
 	if (multiplayer) {
 
@@ -333,7 +334,7 @@ JJ1Event* JJ1Level::getEvents () {
  */
 JJ1EventType* JJ1Level::getEvent (unsigned char gridX, unsigned char gridY) {
 
-	int event = grid[gridY][gridX].event;
+	int event = grid[gridX][gridY].event();
 
 	if (event) return eventSet + event;
 
@@ -352,7 +353,9 @@ JJ1EventType* JJ1Level::getEvent (unsigned char gridX, unsigned char gridY) {
  */
 unsigned char JJ1Level::getEventHits (unsigned char gridX, unsigned char gridY) {
 
-	return grid[gridY][gridX].hits;
+	JJ1EventState* state = findEventState(gridX, gridY);
+
+	return state? state->hits: 0;
 
 }
 
@@ -367,7 +370,9 @@ unsigned char JJ1Level::getEventHits (unsigned char gridX, unsigned char gridY) 
  */
 unsigned int JJ1Level::getEventTime (unsigned char gridX, unsigned char gridY) {
 
-	return grid[gridY][gridX].time;
+	JJ1EventState* state = findEventState(gridX, gridY);
+
+	return state? state->time: 0;
 
 }
 
@@ -381,10 +386,10 @@ unsigned int JJ1Level::getEventTime (unsigned char gridX, unsigned char gridY) {
 void JJ1Level::clearEvent (unsigned char gridX, unsigned char gridY) {
 
 	// Ignore if the event has been un-destroyed
-	if (!grid[gridY][gridX].hits &&
-		eventSet[grid[gridY][gridX].event].strength) return;
+	if (!getEventHits(gridX, gridY) &&
+		eventSet[grid[gridX][gridY].event()].strength) return;
 
-	grid[gridY][gridX].event = 0;
+	grid[gridX][gridY].setEvent(0);
 
 	if (multiplayer) {
 
@@ -416,36 +421,40 @@ void JJ1Level::clearEvent (unsigned char gridX, unsigned char gridY) {
  */
 int JJ1Level::hitEvent (unsigned char gridX, unsigned char gridY, int hits, JJ1LevelPlayer* source, unsigned int time) {
 
-	GridElement *ge = grid[gridY] + gridX;
-	int hitsToKill = eventSet[ge->event].strength;
+	GridElement *ge = &grid[gridX][gridY];
+	int hitsToKill = eventSet[ge->event()].strength;
+	int eventHits = getEventHits(gridX, gridY);
 
 	// If the event cannot be hit, return negative
-	if (!hitsToKill || (ge->hits == 255)) return -1;
+	if (!hitsToKill || (eventHits == 255)) return -1;
 
 	// In turbo difficulty, enemy events generally take one more hit
-	if (getDifficulty() == difficultyType::Turbo && eventSet[ge->event].modifier == 0)
+	if (getDifficulty() == difficultyType::Turbo && eventSet[ge->event()].modifier == 0)
 		hitsToKill++;
 
 	// If the event has already been destroyed, do nothing
-	if (ge->hits >= hitsToKill) return 0;
+	if (eventHits >= hitsToKill) return 0;
 
 	// Check if the event has been killed
-	if (ge->hits + hits >= hitsToKill) {
+	if (eventHits + hits >= hitsToKill) {
 
 		// Notify the player that shot the bullet
 		// If this returns false, ignore the hit
-		if (!source->takeEvent(eventSet + ge->event, gridX, gridY, ticks)) {
+		if (!source->takeEvent(eventSet + ge->event(), gridX, gridY, ticks)) {
 
-			return hitsToKill - ge->hits;
+			return hitsToKill - eventHits;
 
 		}
 
-		ge->hits = (hits == 255)? 255: hitsToKill;
-		ge->time = time;
+		eventHits = (hits == 255)? 255: hitsToKill;
+		JJ1EventState& state = eventState(gridX, gridY);
+		state.hits = eventHits;
+		state.time = time;
 
 	} else {
 
-		ge->hits += hits;
+		eventHits += hits;
+		setEventHits(gridX, gridY, eventHits);
 
 	}
 
@@ -457,13 +466,13 @@ int JJ1Level::hitEvent (unsigned char gridX, unsigned char gridY, int hits, JJ1L
 		buffer[2] = gridX;
 		buffer[3] = gridY;
 		buffer[4] = 3; // hits variable
-		buffer[5] = ge->hits;
+		buffer[5] = eventHits;
 
 		game->send(buffer);
 
 	}
 
-	return hitsToKill - ge->hits;
+	return hitsToKill - eventHits;
 
 }
 
@@ -477,7 +486,64 @@ int JJ1Level::hitEvent (unsigned char gridX, unsigned char gridY, int hits, JJ1L
  */
 void JJ1Level::setEventTime (unsigned char gridX, unsigned char gridY, unsigned int time) {
 
-	grid[gridY][gridX].time = time;
+	if (time || findEventState(gridX, gridY)) eventState(gridX, gridY).time = time;
+
+}
+
+
+/**
+ * Set the hits incurred by the event from the given tile.
+ *
+ * @param gridX X-coordinate of the tile
+ * @param gridY Y-coordinate of the tile
+ * @param hits Number of hits
+ */
+void JJ1Level::setEventHits (unsigned char gridX, unsigned char gridY, unsigned char hits) {
+
+	if (hits || findEventState(gridX, gridY)) eventState(gridX, gridY).hits = hits;
+
+}
+
+
+/**
+ * Find the state of the event from the given tile.
+ *
+ * @param gridX X-coordinate of the tile
+ * @param gridY Y-coordinate of the tile
+ *
+ * @return The state, or nullptr if the event has not been shot or timed
+ */
+JJ1EventState* JJ1Level::findEventState (unsigned char gridX, unsigned char gridY) {
+
+	unsigned short cell = (gridY * LW) + gridX;
+	auto it = std::lower_bound(eventStates.begin(), eventStates.end(), cell,
+		[](const JJ1EventState& state, unsigned short c) { return state.cell < c; });
+
+	if (it == eventStates.end() || it->cell != cell) return nullptr;
+
+	return &*it;
+
+}
+
+
+/**
+ * Get the state of the event from the given tile, adding it if need be.
+ *
+ * @param gridX X-coordinate of the tile
+ * @param gridY Y-coordinate of the tile
+ *
+ * @return The state
+ */
+JJ1EventState& JJ1Level::eventState (unsigned char gridX, unsigned char gridY) {
+
+	unsigned short cell = (gridY * LW) + gridX;
+	auto it = std::lower_bound(eventStates.begin(), eventStates.end(), cell,
+		[](const JJ1EventState& state, unsigned short c) { return state.cell < c; });
+
+	if (it == eventStates.end() || it->cell != cell)
+		it = eventStates.insert(it, {cell, 0, 0});
+
+	return *it;
 
 }
 
@@ -732,11 +798,11 @@ void JJ1Level::receive (unsigned char* buffer) {
 
 		case MT_L_GRID:
 
-			if (buffer[4] == 0) grid[buffer[3]][buffer[2]].tile = buffer[5];
+			if (buffer[4] == 0) grid[buffer[2]][buffer[3]].tile = buffer[5];
 			else if (buffer[4] == 2)
-				grid[buffer[3]][buffer[2]].event = buffer[5];
+				grid[buffer[2]][buffer[3]].setEvent(buffer[5]);
 			else if (buffer[4] == 3)
-				grid[buffer[3]][buffer[2]].hits = buffer[5];
+				setEventHits(buffer[2], buffer[3], buffer[5]);
 
 			break;
 

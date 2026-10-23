@@ -38,6 +38,7 @@
 #endif
 
 #include "SDL_wrapper.h"
+#include <algorithm>
 #include <string.h>
 #include <unistd.h>
 #include <miniz.h>
@@ -527,14 +528,40 @@ const unsigned char* File::loadBaked (BakeKind kind, int& length, int param) {
  * @return Buffer containing the uncompressed data
  */
 unsigned char* File::loadRLE (int length, bool checkSize) {
+
+#if OJ_PACK
+	// Baked blocks are used in place
+	if (const unsigned char* baked = loadBaked(BAKE_RLE, length))
+		return const_cast<unsigned char*>(baked);
+#endif
+
+	unsigned char* buffer = new unsigned char[length];
+	loadRLE(buffer, length, checkSize);
+
+	return buffer;
+
+}
+
+
+/**
+ * Load a block of RLE compressed data from the file into the given buffer.
+ *
+ * @param buffer Buffer to hold the uncompressed data
+ * @param length The length of the uncompressed block
+ * @param checkSize Whether or not the RLE block is terminated
+ */
+void File::loadRLE (unsigned char* buffer, int length, bool checkSize) {
 	int size = 0;
 #if OJ_DEV_HOOKS
 	int offset = tell();
 #endif
 
 #if OJ_PACK
-	if (const unsigned char* baked = loadBaked(BAKE_RLE, length))
-		return const_cast<unsigned char*>(baked);
+	int bakedLength = length;
+	if (const unsigned char* baked = loadBaked(BAKE_RLE, bakedLength)) {
+		memcpy(buffer, baked, std::min(length, bakedLength));
+		return;
+	}
 #endif
 
 	if (checkSize) {
@@ -543,7 +570,6 @@ unsigned char* File::loadRLE (int length, bool checkSize) {
 	}
 	int start = tell();
 
-	unsigned char* buffer = new unsigned char[length];
 #if OJ_DEV_HOOKS
 	// Blocks that end early would otherwise leave uninitialised bytes
 	memset(buffer, 0, length);
@@ -590,8 +616,6 @@ unsigned char* File::loadRLE (int length, bool checkSize) {
 	// The size prefix stays in the file, for skipRLE()
 	devDecoded(filePath, offset, start, tell(), BAKE_RLE, 0, buffer, length);
 #endif
-
-	return buffer;
 
 }
 

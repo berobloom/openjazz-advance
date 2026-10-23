@@ -85,6 +85,7 @@ class File {
 		void               storeData   (const void* data, int length);
 		unsigned char*     loadBlock   (int length);
 		unsigned char*     loadRLE     (int length, bool checkSize = true);
+		void               loadRLE     (unsigned char* buffer, int length, bool checkSize = true);
 		void               skipRLE     ();
 		unsigned char*     loadLZ      (int compressedLength, int length);
 		char*              loadTerminatedString (int maxSize = 0);

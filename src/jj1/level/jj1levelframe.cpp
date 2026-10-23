@@ -71,8 +71,8 @@ int JJ1Level::step () {
 		for (x = FTOT(viewX) - 5; x < ITOT(FTOI(viewX) + canvasW) + 5; x++) {
 
 			if ((x >= 0) && (y >= 0) && (x < LW) && (y < LH) &&
-				grid[y][x].event && (grid[y][x].event < 121) &&
-				(+eventSet[grid[y][x].event].difficulty <= +getDifficulty())) {
+				grid[x][y].event() && (grid[x][y].event() < 121) &&
+				(+eventSet[grid[x][y].event()].difficulty <= +getDifficulty())) {
 
 				event = events;
 
@@ -110,7 +110,7 @@ int JJ1Level::step () {
 
 						default:
 
-							events = new JJ1StandardEvent(eventSet + grid[y][x].event, x, y, TTOF(x), TTOF(y + 1));
+							events = new JJ1StandardEvent(eventSet + grid[x][y].event(), x, y, TTOF(x), TTOF(y + 1));
 
 							break;
 
@@ -311,17 +311,17 @@ void JJ1Level::draw () {
 			}
 
 			// Get the grid element from the given coordinates
-			ge = grid[y + ITOT(vY)] + x + ITOT(vX);
+			ge = &grid[x + ITOT(vX)][y + ITOT(vY)];
 
 			// If this tile uses a black background, draw it
-			if (ge->bg)
+			if (ge->bg())
 				video.drawRect(TTOI(x) - (vX & 31), TTOI(y) - (vY & 31), 32, 32, LEVEL_BLACK);
 
 
 			// If this is not a foreground tile, draw it
-			if ((ge->event != 123) && (ge->event != 124) && (ge->event != 125) &&
-				(eventSet[ge->event].movement != 37) &&
-				(eventSet[ge->event].movement != 38)) {
+			if ((ge->event() != 123) && (ge->event() != 124) && (ge->event() != 125) &&
+				(eventSet[ge->event()].movement != 37) &&
+				(eventSet[ge->event()].movement != 38)) {
 
 				dst.x = TTOI(x) - (vX & 31);
 				dst.y = TTOI(y) - (vY & 31);
@@ -363,15 +363,15 @@ void JJ1Level::draw () {
 			if ((x + ITOT(vX) >= 256) || (y + ITOT(vY) >= 64)) continue;
 
 			// Get the grid element from the given coordinates
-			ge = grid[y + ITOT(vY)] + x + ITOT(vX);
+			ge = &grid[x + ITOT(vX)][y + ITOT(vY)];
 
 			// If this is an "animated" foreground tile, draw it
-			if (ge->event == 123) {
+			if (ge->event() == 123) {
 
 				dst.x = TTOI(x) - (vX & 31);
 				dst.y = TTOI(y) - (vY & 31);
-				if (ticks & 64) src.y = TTOI(eventSet[ge->event].multiB);
-				else src.y = TTOI(eventSet[ge->event].multiA);
+				if (ticks & 64) src.y = TTOI(eventSet[ge->event()].multiB);
+				else src.y = TTOI(eventSet[ge->event()].multiA);
 				SDL_BlitSurface(tileSet, &src, canvas, &dst);
 
 #if OJ_DEBUG
@@ -383,9 +383,9 @@ void JJ1Level::draw () {
 			}
 
 			// If this is a foreground tile, draw it
-			if ((ge->event == 124) || (ge->event == 125) ||
-				(eventSet[ge->event].movement == 37) ||
-				(eventSet[ge->event].movement == 38)) {
+			if ((ge->event() == 124) || (ge->event() == 125) ||
+				(eventSet[ge->event()].movement == 37) ||
+				(eventSet[ge->event()].movement == 38)) {
 
 				dst.x = TTOI(x) - (vX & 31);
 				dst.y = TTOI(y) - (vY & 31);

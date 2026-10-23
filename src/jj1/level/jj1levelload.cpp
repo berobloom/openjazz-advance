@@ -677,26 +677,11 @@ int JJ1Level::load (char* fileName, bool checkpoint) {
 	// Skip to tile and event reference data
 	file->seek(39, true);
 
-	// Load tile and event references
+	// Load tile and event references, which the grid stores as the file does
+	static_assert(sizeof(GridElement) == 2, "The grid must match the level file");
+	file->loadRLE(reinterpret_cast<unsigned char*>(grid), LW * LH * 2);
 
-	buffer = file->loadRLE(LW * LH * 2);
-
-	// Create grid from data
-	for (int x = 0; x < LW; x++) {
-
-		for (int y = 0; y < LH; y++) {
-
-			grid[y][x].tile = buffer[(y + (x * LH)) << 1];
-			grid[y][x].bg = buffer[((y + (x * LH)) << 1) + 1] >> 7;
-			grid[y][x].event = buffer[((y + (x * LH)) << 1) + 1] & 127;
-			grid[y][x].hits = 0;
-			grid[y][x].time = 0;
-
-		}
-
-	}
-
-	delete[] buffer;
+	eventStates.clear();
 
 	// Ignore tile transparency settings, these are applied based on event type/behaviour
 
@@ -705,17 +690,8 @@ int JJ1Level::load (char* fileName, bool checkpoint) {
 
 	// Load mask data
 
-	buffer = file->loadRLE(MASKS); // TODO: find out how the 16 extra masks are used
-
-	// Unpack bits
-	for (int i = 0; i < tiles; i++) {
-		for (int y = 0; y < 8; y++) {
-			for (int x = 0; x < 8; x++)
-				mask[i][(y << 3) + x] = (buffer[(i << 3) + y] >> x) & 1;
-		}
-	}
-
-	delete[] buffer;
+	static_assert(sizeof(mask) == MASKS, "The masks must match the level file");
+	file->loadRLE(&mask[0][0], MASKS); // TODO: find out how the 16 extra masks are used
 
 #if OJ_DEBUG
 	// This let's us see the mask of the tile graphics during gameplay
@@ -726,7 +702,7 @@ int JJ1Level::load (char* fileName, bool checkpoint) {
 		for (int y = 0; y < 32; y++) {
 			for (int x = 0; x < 32; x++) {
 
-				bool masked = (mask[i][((y >> 2) << 3) + (x >> 2)] == 1);
+				bool masked = (mask[i][y >> 2] >> (x >> 2)) & 1;
 				((char *)(maskedTileset->pixels))[(i * 1024) + (y * 32) + x] =
 					masked ? 88 : TKEY; // orange
 
@@ -804,7 +780,7 @@ int JJ1Level::load (char* fileName, bool checkpoint) {
 	for (int x = 0; x < LW; x++) {
 		for (int y = 0; y < LH; y++) {
 
-			int type = grid[y][x].event;
+			int type = grid[x][y].event();
 			if (type) {
 				// If the event hurts and can be killed, it is an enemy
 				// Anything else that scores is an item
