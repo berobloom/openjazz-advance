@@ -17,11 +17,10 @@
 
 #include "io/bakepack.h"
 
-void bakeOpened  (const char* path, int size);
-/// Pauses recording, for decodes that the caller records as a whole instead
-void bakeSuspend (bool suspend);
-void bakeRecord  (const char* path, int offset, int holeStart, int end,
+void bakeOpened (const char* path, int size);
+void bakeRecord (const char* path, int offset, int holeStart, int end,
 	BakeKind kind, int param, const unsigned char* data, int length);
-int  bakeSweep   (const char* gameDir, const char* outPath);
+void bakeRawRead (const char* path, int offset, int length);
+int  bakeSweep  (const char* gameDir, const char* outPath);
 
 #endif

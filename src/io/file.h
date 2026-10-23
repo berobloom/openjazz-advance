@@ -29,6 +29,10 @@
 #include <stdio.h>
 #include <memory>
 
+#if OJ_PACK
+	#include "io/bakepack.h"
+#endif
+
 // Types
 
 enum pathType {
@@ -52,6 +56,9 @@ class File {
 		FILE* file;
 		char* filePath;
 		bool  forWriting;
+#if OJ_PACK
+		const BakePackFile* packed; ///< The file in the game data pack, if opened from there
+#endif
 
 		bool open (const char* path, const char* name, bool write);
 
@@ -86,6 +93,9 @@ class File {
 		unsigned char*     loadPixels  (int length);
 		unsigned char*     loadPixels  (int length, int key);
 		void               loadPalette (SDL_Color* palette, bool rle = true);
+#if OJ_PACK
+		const unsigned char* loadBaked (BakeKind kind, int& length, int param = 0);
+#endif
 
 };
 

@@ -41,8 +41,8 @@
 #include "loop.h"
 #include "util.h"
 #include "io/log.h"
-#if OJ_BAKE
-	#include "dev/bake.h"
+#if OJ_DEV_HOOKS
+	#include "dev/devhooks.h"
 #endif
 
 #include <string.h>
@@ -72,8 +72,8 @@ int JJ1Level::loadPanel () {
 	unsigned char* pixels = file->loadRLE(46272);
 
 
-	// Create the panel background
-	panel = video.createSurface(pixels, SW, TTOI(1));
+	// Create the panel background, which the ammo display is drawn onto
+	panel = video.createSurface(pixels, SW, TTOI(1), true);
 
 
 	// De-scramble the panel's ammo graphics
@@ -318,6 +318,77 @@ int JJ1Level::loadSprites (char * fileName) {
 
 
 /**
+ * Decode the tile images of a tileset file.
+ *
+ * @param file File positioned at the first tile group
+ * @param fileName Name of the file
+ * @param buffer Receives all the tiles' pixels, one tile after another
+ *
+ * @return The number of tiles loaded, or an error code
+ */
+static int loadTilePixels (File* file, const char* fileName, unsigned char*& buffer) {
+
+	int tiles = 0;
+	unsigned char* pixels[TSETS * TNUM] = {0};
+
+#if OJ_DEV_HOOKS
+	// Reported below as a whole, rather than tile by tile
+	int tilesOffset = file->tell();
+	devSuspend(true);
+#endif
+
+	for (int i = 0; i < TSETS; i++) {
+		// Check if this tileset is enabled
+		char * marker = file->loadString(2);
+		if(strncmp(marker, "ok", 2) == 0) {
+			for(int j = 0; j < TNUM; j++) {
+				// Read the RLE pixels
+				pixels[i * TNUM + j] = file->loadRLE(TTOI(1) * TTOI(1));
+			}
+			tiles += TNUM;
+			LOG_MAX("Loaded tileset %d", i);
+		} else if (strncmp(marker, "  ", 2) == 0) { // Empty tilesets have marker of 2 spaces
+			LOG_TRACE("Skipping empty tileset %d", i);
+		}
+		delete[] marker;
+	}
+
+#if OJ_DEV_HOOKS
+	devSuspend(false);
+#endif
+
+	if (file->getSize() != file->tell()) {
+		LOG_WARN("Tileset data is corrupted");
+
+		for (int i = 0; i < tiles; i++)
+			delete[] pixels[i];
+
+		return E_FILE;
+	}
+
+	// Create combined buffer
+	buffer = new unsigned char[TTOI(1) * TTOI(tiles)];
+	for (int i = 0; i < tiles; i++) {
+		memcpy(buffer + TTOI(1) * TTOI(1) * i,
+			pixels[i], TTOI(1) * TTOI(1));
+		delete[] pixels[i];
+	}
+
+#if OJ_DEV_HOOKS
+	devDecoded(fileName, tilesOffset, tilesOffset, file->tell(), BAKE_TILESET, 0,
+		buffer, TTOI(1) * TTOI(tiles));
+#endif
+
+#if !OJ_DEV_HOOKS
+	OJ_UNUSED(fileName);
+#endif
+
+	return tiles;
+
+}
+
+
+/**
  * Load the tileset.
  *
  * @param fileName Name of the file containing the tileset
@@ -349,61 +420,27 @@ int JJ1Level::loadTiles (char* fileName) {
 	file->skipRLE();
 
 	// Load the tile pixel indices
-	int tiles = 0;
-	unsigned char* pixels[TSETS * TNUM] = {0};
+	int tiles;
+	unsigned char* buffer = nullptr;
+	const unsigned char* tileData = nullptr;
 
-#if OJ_BAKE
-	// Recorded below as a whole, rather than tile by tile
-	int tilesOffset = file->tell();
-	bakeSuspend(true);
+#if OJ_PACK
+	// Use the tiles decoded ahead of time, if there are any
+	int bakedLength = -1;
+	tileData = file->loadBaked(BAKE_TILESET, bakedLength);
+	tiles = bakedLength / (TTOI(1) * TTOI(1));
 #endif
 
-	for (int i = 0; i < TSETS; i++) {
-		// Check if this tileset is enabled
-		char * marker = file->loadString(2);
-		if(strncmp(marker, "ok", 2) == 0) {
-			for(int j = 0; j < TNUM; j++) {
-				// Read the RLE pixels
-				pixels[i * TNUM + j] = file->loadRLE(TTOI(1) * TTOI(1));
-			}
-			tiles += TNUM;
-			LOG_MAX("Loaded tileset %d", i);
-		} else if (strncmp(marker, "  ", 2) == 0) { // Empty tilesets have marker of 2 spaces
-			LOG_TRACE("Skipping empty tileset %d", i);
-		}
-		delete[] marker;
-	}
-
-#if OJ_BAKE
-	bakeSuspend(false);
-#endif
-
-	if (file->getSize() != file->tell()) {
-		LOG_WARN("Tileset data is corrupted");
-
-		for (int i = 0; i < tiles; i++)
-			delete[] pixels[i];
-
-		return E_FILE;
+	if (!tileData) {
+		tiles = loadTilePixels(file.get(), fileName, buffer);
+		if (tiles < 0) return tiles;
+		tileData = buffer;
 	}
 
 	LOG_TRACE("Loaded %d tiles", tiles);
 
-	// Create combined buffer
-	unsigned char* buffer = new unsigned char[TTOI(1) * TTOI(tiles)];
-	for (int i = 0; i < tiles; i++) {
-		memcpy(buffer + TTOI(1) * TTOI(1) * i,
-			pixels[i], TTOI(1) * TTOI(1));
-		delete[] pixels[i];
-	}
-
-	tileSet = video.createSurface(buffer, TTOI(1), TTOI(tiles));
+	tileSet = video.createSurface(tileData, TTOI(1), TTOI(tiles));
 	video.enableColorKey(tileSet, TKEY);
-
-#if OJ_BAKE
-	bakeRecord(fileName, tilesOffset, tilesOffset, file->tell(), BAKE_TILESET, 0,
-		buffer, TTOI(1) * TTOI(tiles));
-#endif
 
 	delete[] buffer;
 

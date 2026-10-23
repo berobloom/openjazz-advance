@@ -30,7 +30,12 @@
 #include <malloc.h>
 #include <vector>
 
+#include "devhooks.h"
 #include "sweep.h"
+
+#if OJ_PACK
+	#include "io/pack.h"
+#endif
 
 long soundMemory ();
 
@@ -140,6 +145,7 @@ struct Sample {
 	long steady;  ///< Heap held while loaded, above the engine baseline
 	long peak;    ///< Highest heap during loading, above the engine baseline
 	long sound;   ///< Part of steady held by resampled sound effects
+	uint64_t digest; ///< Hash of the data the loaders read, see devhooks.h
 	bool failed;
 };
 
@@ -189,16 +195,19 @@ static Sample measure (const char* name, const SweepLoad& load) {
 	snprintf(sample.name, sizeof(sample.name), "%s", name);
 
 	heapPeak.store(heapCurrent);
+	devDigestReset();
 
 	sample.failed = false;
 	sample.steady = 0;
 	sample.sound = 0;
+	sample.digest = 0;
 
 	try {
 		auto unload = load();
 		sample.steady = heapCurrent - baseline;
 		sample.peak = heapPeak - baseline;
 		sample.sound = soundMemory();
+		sample.digest = devDigest();
 		if (wantDetail) {
 			detailOn = false;
 			reportDetail(name);
@@ -218,12 +227,12 @@ static void report (const char* title, std::vector<Sample>& samples) {
 	long maxSteady = 0, maxPeak = 0, noSound;
 	const char *maxSteadyName = "-", *maxPeakName = "-";
 
-	printf("\n%s\n%-14s %10s %10s %10s %10s\n", title, "file", "steady", "peak", "sound", "no-sound");
+	printf("\n%s\n%-14s %10s %10s %10s %10s  %-16s\n", title, "file", "steady", "peak", "sound", "no-sound", "digest");
 
 	for (Sample& s : samples) {
 		noSound = s.steady - s.sound + baselineSound;
-		printf("%-14s %10ld %10ld %10ld %10ld%s\n", s.name, s.steady, s.peak, s.sound,
-			noSound, s.failed ? "  (failed to load)" : "");
+		printf("%-14s %10ld %10ld %10ld %10ld  %016llx%s\n", s.name, s.steady, s.peak, s.sound,
+			noSound, static_cast<unsigned long long>(s.digest), s.failed ? "  (failed to load)" : "");
 		if (s.failed) continue;
 		if (noSound > maxSteady) { maxSteady = noSound; maxSteadyName = s.name; }
 		if (s.peak > maxPeak) { maxPeak = s.peak; maxPeakName = s.name; }
@@ -250,6 +259,10 @@ int memstatsSweep (const char* gameDir) {
 
 	for (int type = 0; type < SWEEP_TYPES; type++)
 		report(sweepTypeNames[type], samples[type]);
+
+#if OJ_PACK
+	packReport();
+#endif
 
 	return 0;
 

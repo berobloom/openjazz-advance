@@ -88,7 +88,7 @@ class Video {
 		void       changePalette         (SDL_Color *palette, unsigned char first, unsigned int amount);
 
 		// Surface
-		SDL_Surface* createSurface       (const unsigned char* pixels, int width, int height);
+		SDL_Surface* createSurface       (const unsigned char* pixels, int width, int height, bool writable = false);
 		void         destroySurface      (SDL_Surface *surface);
 		void         setSurfacePalette   (SDL_Surface *surface, SDL_Color *palette, int start, int length);
 		void         restoreSurfacePalette (SDL_Surface *surface);

@@ -30,8 +30,11 @@
 #include "util.h"
 #include "io/log.h"
 
-#if OJ_BAKE
-	#include "dev/bake.h"
+#if OJ_DEV_HOOKS
+	#include "dev/devhooks.h"
+#endif
+#if OJ_PACK
+	#include "io/pack.h"
 #endif
 
 #include "SDL_wrapper.h"
@@ -55,6 +58,21 @@
 File::File (const char* name, int pathType, bool write) :
 	file(nullptr), filePath(nullptr), forWriting(write) {
 
+#if OJ_PACK
+	packed = nullptr;
+
+	if (!write && (pathType & PATH_TYPE_GAME)) {
+		packed = packFindFile(name);
+
+		if (packed) {
+			file = packOpen(packed);
+			filePath = createString("pack/", name);
+			LOG_DEBUG("Opened file: %s", filePath);
+			return;
+		}
+	}
+#endif
+
 	Path* path = gamePaths.paths;
 
 	while (path) {
@@ -68,8 +86,11 @@ File::File (const char* name, int pathType, bool write) :
 		// only allow certain write paths
 		if (!write || (pathType & (PATH_TYPE_CONFIG|PATH_TYPE_TEMP)) > 0) {
 			if (open(path->path, name, write)) {
-#if OJ_BAKE
-				if (!write && (pathType & PATH_TYPE_GAME)) bakeOpened(filePath, getSize());
+#if OJ_DEV_HOOKS
+				if (!write && (pathType & PATH_TYPE_GAME)) devOpened(filePath, getSize());
+#endif
+#if OJ_PACK
+				if (!write && (pathType & PATH_TYPE_GAME) && packActive()) packNoteMissing(name);
 #endif
 				return;
 			}
@@ -252,6 +273,9 @@ int File::seek (int offset, int origin) {
 }
 
 int File::read (void *buffer, int size, int count) {
+#if OJ_DEV_HOOKS
+	devRawRead(filePath, tell(), size * count);
+#endif
 	return fread(buffer, size, count, file);
 }
 
@@ -262,6 +286,10 @@ int File::read (void *buffer, int size, int count) {
  * @return The value read
  */
 unsigned char File::loadChar () {
+
+#if OJ_DEV_HOOKS
+	devRawRead(filePath, tell(), 1);
+#endif
 
 	return fgetc(file);
 
@@ -283,6 +311,10 @@ void File::storeChar (const unsigned char val) {
 unsigned short int File::loadShort () {
 
 	unsigned short int val;
+
+#if OJ_DEV_HOOKS
+	devRawRead(filePath, tell(), 2);
+#endif
 
 	val = fgetc(file);
 	val += fgetc(file) << 8;
@@ -333,6 +365,10 @@ signed int File::loadInt () {
 
 	unsigned int val;
 
+#if OJ_DEV_HOOKS
+	devRawRead(filePath, tell(), 4);
+#endif
+
 	val = fgetc(file);
 	val += fgetc(file) << 8;
 	val += fgetc(file) << 16;
@@ -363,6 +399,9 @@ void File::storeInt (const signed int val) {
  * @return The new string
  */
 char * File::loadString (int length) {
+#if OJ_DEV_HOOKS
+	devRawRead(filePath, tell(), length);
+#endif
 	char *string = new char[length + 1];
 	int res = fread(string, 1, length, file);
 
@@ -405,16 +444,74 @@ unsigned char * File::loadBlock (int length) {
 
 	unsigned char *buffer;
 
+#if OJ_PACK
+	// Use the pack's copy in place
+	if (packed) {
+		const unsigned char* stored = packFindStored(packed, tell(), length);
+
+		if (stored) {
+			seek(length, false);
+	#if OJ_DEV_HOOKS
+			devRead(stored, length);
+	#endif
+			return const_cast<unsigned char*>(stored);
+		}
+	}
+#endif
+
 	buffer = new unsigned char[length];
+
+#if OJ_DEV_HOOKS
+	devRawRead(filePath, tell(), length);
+#endif
 
 	int res = fread(buffer, 1, length, file);
 
 	if (res != length)
 		LOG_ERROR("Could not read whole block (%d of %d bytes read)", res, length);
 
+#if OJ_DEV_HOOKS
+	devRead(buffer, length);
+#endif
+
 	return buffer;
 
 }
+
+
+#if OJ_PACK
+/**
+ * Use the game data pack's decoded copy of the block at the current position,
+ * if it has one, and move past the block.
+ *
+ * @param kind How the caller would decode the block
+ * @param length The decoded length the caller expects, or -1 for any. Set to
+ * the actual length.
+ * @param param Depends on kind
+ *
+ * @return The decoded block, which must not be modified, or nullptr
+ */
+const unsigned char* File::loadBaked (BakeKind kind, int& length, int param) {
+
+	if (!packed) return nullptr;
+
+	int offset = tell();
+	const BakePackEntry* entry = packFindDecoded(packed, offset, kind, length, param);
+
+	if (!entry) return nullptr;
+
+	const unsigned char* data = packData(entry->dataOffset);
+	length = entry->length;
+	seek(entry->end, true);
+
+	#if OJ_DEV_HOOKS
+	devDecoded(filePath, offset, offset, entry->end, kind, param, data, length);
+	#endif
+
+	return data;
+
+}
+#endif
 
 
 /**
@@ -427,8 +524,13 @@ unsigned char * File::loadBlock (int length) {
  */
 unsigned char* File::loadRLE (int length, bool checkSize) {
 	int size = 0;
-#if OJ_BAKE
+#if OJ_DEV_HOOKS
 	int offset = tell();
+#endif
+
+#if OJ_PACK
+	if (const unsigned char* baked = loadBaked(BAKE_RLE, length))
+		return const_cast<unsigned char*>(baked);
 #endif
 
 	if (checkSize) {
@@ -438,9 +540,10 @@ unsigned char* File::loadRLE (int length, bool checkSize) {
 	int start = tell();
 
 	unsigned char* buffer = new unsigned char[length];
-#if OJ_BAKE
-	// Blocks that end early would otherwise bake in uninitialised bytes
+#if OJ_DEV_HOOKS
+	// Blocks that end early would otherwise leave uninitialised bytes
 	memset(buffer, 0, length);
+	devDecoding(true);
 #endif
 
 	int pos = 0;
@@ -466,6 +569,10 @@ unsigned char* File::loadRLE (int length, bool checkSize) {
 		}
 	}
 
+#if OJ_DEV_HOOKS
+	devDecoding(false);
+#endif
+
 	if (checkSize) {
 		if (tell() != start + size)
 			LOG_DEBUG("RLE block has incorrect size: %d vs. %d", tell() - start, size);
@@ -475,9 +582,9 @@ unsigned char* File::loadRLE (int length, bool checkSize) {
 		LOG_MAX("RLE block was %d bytes long", tell() - start);
 	}
 
-#if OJ_BAKE
+#if OJ_DEV_HOOKS
 	// The size prefix stays in the file, for skipRLE()
-	bakeRecord(filePath, offset, start, tell(), BAKE_RLE, 0, buffer, length);
+	devDecoded(filePath, offset, start, tell(), BAKE_RLE, 0, buffer, length);
 #endif
 
 	return buffer;
@@ -626,13 +733,26 @@ unsigned char* File::loadPixels  (int length) {
 	unsigned char* sorted;
 	int count;
 
-	sorted = new unsigned char[length];
-
-#if OJ_BAKE
-	int offset = tell();
+#if OJ_PACK
+	if (const unsigned char* baked = loadBaked(BAKE_PIXELS, length))
+		return const_cast<unsigned char*>(baked);
 #endif
 
+#if OJ_DEV_HOOKS
+	int offset = tell();
+	// Only the result counts, not the raw block
+	devSuspend(true);
+	devDecoding(true);
+#endif
+
+	sorted = new unsigned char[length];
+
 	pixels = loadBlock(length);
+
+#if OJ_DEV_HOOKS
+	devDecoding(false);
+	devSuspend(false);
+#endif
 
 	// Rearrange pixels in correct order
 	for (count = 0; count < length; count++) {
@@ -643,8 +763,8 @@ unsigned char* File::loadPixels  (int length) {
 
 	delete[] pixels;
 
-#if OJ_BAKE
-	bakeRecord(filePath, offset, offset, tell(), BAKE_PIXELS, 0, sorted, length);
+#if OJ_DEV_HOOKS
+	devDecoded(filePath, offset, offset, tell(), BAKE_PIXELS, 0, sorted, length);
 #endif
 
 	return sorted;
@@ -668,10 +788,15 @@ unsigned char* File::loadPixels (int length, int key) {
 	int count;
 
 
+#if OJ_PACK
+	if (const unsigned char* baked = loadBaked(BAKE_MASKED_PIXELS, length, key))
+		return const_cast<unsigned char*>(baked);
+#endif
+
 	sorted = new unsigned char[length];
 	pixels = new unsigned char[length];
 
-#if OJ_BAKE
+#if OJ_DEV_HOOKS
 	int offset = tell();
 #endif
 
@@ -720,8 +845,8 @@ unsigned char* File::loadPixels (int length, int key) {
 
 	delete[] pixels;
 
-#if OJ_BAKE
-	bakeRecord(filePath, offset, offset, tell(), BAKE_MASKED_PIXELS, key, sorted, length);
+#if OJ_DEV_HOOKS
+	devDecoded(filePath, offset, offset, tell(), BAKE_MASKED_PIXELS, key, sorted, length);
 #endif
 
 	return sorted;

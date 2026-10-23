@@ -257,11 +257,22 @@ endif()
 
 option(MEMSTATS "Developer tool: heap tracking and level sweep for sizing ports (glibc only)" OFF)
 option(BAKE "Developer tool: build the baked game data pack for ports with little RAM" OFF)
-mark_as_advanced(MEMSTATS BAKE)
+option(PACK "Load game data from a baked pack (desktop: OJ_PACK=<file>), for testing ports" OFF)
+mark_as_advanced(MEMSTATS BAKE PACK)
 if(MEMSTATS OR BAKE)
 	target_sources(OpenJazz PRIVATE
+		src/dev/devhooks.cpp
+		src/dev/devhooks.h
 		src/dev/sweep.cpp
 		src/dev/sweep.h)
+	target_compile_definitions(OpenJazz PRIVATE OJ_DEV_HOOKS)
+endif()
+if(PACK)
+	target_sources(OpenJazz PRIVATE
+		src/io/bakepack.h
+		src/io/pack.cpp
+		src/io/pack.h)
+	target_compile_definitions(OpenJazz PRIVATE OJ_PACK)
 endif()
 if(MEMSTATS)
 	target_sources(OpenJazz PRIVATE

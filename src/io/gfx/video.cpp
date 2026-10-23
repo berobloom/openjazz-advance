@@ -35,6 +35,9 @@
 #include "setup.h"
 #include "util.h"
 #include "io/log.h"
+#if OJ_PACK
+	#include "io/pack.h"
+#endif
 
 #include <string.h>
 
@@ -46,14 +49,30 @@
  * @param pixels Pixel data to copy into the surface. Can be nullptr.
  * @param width Width of the pixel data and of the surface to be created
  * @param height Height of the pixel data and of the surface to be created
+ * @param writable Whether the surface will be drawn on. Otherwise pixels from
+ * the game data pack are used in place.
  *
  * @return The completed surface
  */
-SDL_Surface* Video::createSurface (const unsigned char * pixels, int width, int height) {
+SDL_Surface* Video::createSurface (const unsigned char * pixels, int width, int height, bool writable) {
 
 	// Create the surface
 	SDL_Surface *ret = nullptr;
+
+#if OJ_PACK
+	// Pixels from the game data pack are read-only and used in place
+	bool inPlace = pixels && !writable && packContains(pixels);
+	void* packPixels = const_cast<unsigned char*>(pixels);
+#else
+	constexpr bool inPlace = false;
+	OJ_UNUSED(writable);
+#endif
+
 #if OJ_SDL3
+	#if OJ_PACK
+	if (inPlace) ret = SDL_CreateSurfaceFrom(width, height, SDL_PIXELFORMAT_INDEX8, packPixels, width);
+	else
+	#endif
 	ret = SDL_CreateSurface(width, height, SDL_PIXELFORMAT_INDEX8);
 	if(ret) {
 		SDL_Palette *pal = SDL_CreateSurfacePalette(ret);
@@ -63,8 +82,16 @@ SDL_Surface* Video::createSurface (const unsigned char * pixels, int width, int 
 		}
 	}
 #elif OJ_SDL2
+	#if OJ_PACK
+	if (inPlace) ret = SDL_CreateRGBSurfaceWithFormatFrom(packPixels, width, height, 8, width, SDL_PIXELFORMAT_INDEX8);
+	else
+	#endif
 	ret = SDL_CreateRGBSurfaceWithFormat(0, width, height, 0, SDL_PIXELFORMAT_INDEX8);
 #else
+	#if OJ_PACK
+	if (inPlace) ret = SDL_CreateRGBSurfaceFrom(packPixels, width, height, 8, width, 0, 0, 0, 0);
+	else
+	#endif
 	ret = SDL_CreateRGBSurface(SDL_HWSURFACE, width, height, 8, 0, 0, 0, 0);
 #endif
 
@@ -76,7 +103,7 @@ SDL_Surface* Video::createSurface (const unsigned char * pixels, int width, int 
 	// Set the surface's palette
 	video.restoreSurfacePalette(ret);
 
-	if (pixels) {
+	if (pixels && !inPlace) {
 
 		// Upload pixel data to the surface
 		if (SDL_MUSTLOCK(ret)) SDL_LockSurface(ret);

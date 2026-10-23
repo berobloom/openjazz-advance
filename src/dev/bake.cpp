@@ -12,7 +12,8 @@
  * @par Description:
  * Developer tool that builds the baked game data pack (see io/bakepack.h).
  * While the engine loads everything in the game directory (see sweep.cpp),
- * the File class reports each file it opens and each block it decodes. The
+ * the loaders report each file they open and each block they decode (see
+ * devhooks.cpp). The
  * pack is then written from those records, with identical decoded blocks
  * stored once, and a report of where the space goes.
  *
@@ -51,10 +52,10 @@ namespace {
 	using RecordKey = std::tuple<std::string, int, int, int, int>; // name, offset, kind, length, param
 
 	std::map<std::string, OpenedFile> opened;
+	std::map<std::string, std::vector<std::pair<int, int>>> rawReads; ///< offset, length
 	std::map<RecordKey, Record> records;
 	std::vector<std::string> blobs;
 	std::unordered_map<std::string, size_t> blobIndex;
-	bool suspended = false;
 
 	std::string baseName (const char* path) {
 
@@ -101,13 +102,6 @@ namespace {
 }
 
 
-void bakeSuspend (bool suspend) {
-
-	suspended = suspend;
-
-}
-
-
 void bakeOpened (const char* path, int size) {
 
 	std::string name = baseName(path);
@@ -119,8 +113,6 @@ void bakeOpened (const char* path, int size) {
 
 void bakeRecord (const char* path, int offset, int holeStart, int end,
 	BakeKind kind, int param, const unsigned char* data, int length) {
-
-	if (suspended) return;
 
 	std::string name = baseName(path);
 
@@ -155,31 +147,49 @@ void bakeRecord (const char* path, int offset, int holeStart, int end,
 }
 
 
+void bakeRawRead (const char* path, int offset, int length) {
+
+	auto& reads = rawReads[baseName(path)];
+
+	// Loaders mostly read byte by byte, so extend the last range where possible
+	if (!reads.empty() && reads.back().first + reads.back().second == offset)
+		reads.back().second += length;
+	else
+		reads.push_back({offset, length});
+
+}
+
+
 /**
  * Work out which parts of a file to store: everything except the compressed
- * bytes that a decoded entry replaces.
+ * bytes that a decoded entry replaces. Bytes that a loader also reads directly
+ * are kept, even inside a decoded block.
  */
 static std::vector<std::pair<int, int>> storedParts (const std::string& name, int size) {
 
-	std::vector<std::pair<int, int>> holes;
+	std::vector<bool> hole(size, false);
 
 	for (auto& item : records) {
 		if (std::get<0>(item.first) != name) continue;
 		const Record& r = item.second;
-		if (r.end > r.holeStart) holes.push_back({r.holeStart, r.end});
+		for (int i = std::max(r.holeStart, 0); i < std::min(r.end, size); i++) hole[i] = true;
 	}
 
-	std::sort(holes.begin(), holes.end());
+	auto reads = rawReads.find(name);
+	if (reads != rawReads.end()) {
+		for (auto& read : reads->second)
+			for (int i = std::max(read.first, 0); i < std::min(read.first + read.second, size); i++)
+				hole[i] = false;
+	}
 
 	std::vector<std::pair<int, int>> parts;
-	int pos = 0;
 
-	for (auto& hole : holes) {
-		if (hole.first > pos) parts.push_back({pos, hole.first - pos});
-		pos = std::max(pos, hole.second);
+	for (int pos = 0; pos < size;) {
+		int end = pos;
+		while (end < size && hole[end] == hole[pos]) end++;
+		if (!hole[pos]) parts.push_back({pos, end - pos});
+		pos = end;
 	}
-
-	if (pos < size) parts.push_back({pos, size - pos});
 
 	return parts;
 
