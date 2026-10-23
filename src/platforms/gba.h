@@ -47,6 +47,12 @@
    Start: escape, Select: F9 */
 #define DEFAULT_KEY_ENTER (SDLK_SPACE)
 
+/// Stop with a message if the stack has run into the IWRAM data below it
+void gbaCheckStack();
+
+/// Bytes of IWRAM stack never used so far
+int gbaFreeStack();
+
 class GbaPlatform final : public IPlatform {
 	public:
 		GbaPlatform();

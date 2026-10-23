@@ -338,6 +338,7 @@ void Log::log(int lvl, const char *file, int line, const char *fmt, ...) {
 		#undef LOG
 	}
 
+#ifndef NO_LOGFILE
 	if (!logToFile) return;
 
 	// Log to file (buffer in queue)
@@ -386,5 +387,6 @@ void Log::log(int lvl, const char *file, int line, const char *fmt, ...) {
 		message_buffer[message_buffer_index][MAX_MESSAGE_LENGTH - 1] = '\0';
 		message_buffer_index = (message_buffer_index + 1) % MAX_BUFFERED_MESSAGES;
 	}
+#endif // NO_LOGFILE
 #endif
 }

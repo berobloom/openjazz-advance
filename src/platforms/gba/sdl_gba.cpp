@@ -24,6 +24,7 @@
 #include <SDL.h>
 
 #include "blit_gba.h"
+#include "platforms/gba.h"
 
 #include <gba_dma.h>
 #include <gba_input.h>
@@ -248,6 +249,8 @@ SDL_Rect** SDL_ListModes (SDL_PixelFormat* format, Uint32 flags) {
 
 int SDL_Flip (SDL_Surface* surface) {
 	if (surface != screen) return -1;
+
+	gbaCheckStack();
 
 	// The page drawn last time must be on show before drawing the other one
 	while (flipPending) VBlankIntrWait();

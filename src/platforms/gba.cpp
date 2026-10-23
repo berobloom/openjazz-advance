@@ -23,6 +23,10 @@
 
 #include <SDL.h>
 
+#include <gba_systemcalls.h>
+
+extern "C" char __iheap_start[]; // End of the data in IWRAM
+
 namespace {
 
 	// mGBA's debug output registers
@@ -61,9 +65,24 @@ namespace {
 
 	devoptab_t debugDevice;
 
+	/* The stack grows down from the top of IWRAM towards the data that
+	   libsysbase and the engine keep there, so the unused part is filled with
+	   a pattern and the bottom of it watched. */
+	const unsigned int stackFill = 0x57AC57AC;
+	const int stackGuardWords = 64;
+
+	unsigned int* stackBottom () {
+		return reinterpret_cast<unsigned int*>((reinterpret_cast<unsigned int>(__iheap_start) + 3) & ~3);
+	}
+
 	/// Faster cartridge ROM access: 3/1 wait states with prefetch, as most games use
 	__attribute__((constructor)) void initRomTiming () {
 		*reinterpret_cast<volatile unsigned short*>(0x4000204) = 0x4317;
+	}
+
+	__attribute__((constructor)) void initStackFill () {
+		unsigned int* top = static_cast<unsigned int*>(__builtin_frame_address(0)) - 64;
+		for (unsigned int* p = stackBottom(); p < top; p++) *p = stackFill;
 	}
 
 	__attribute__((constructor)) void initDebugOutput () {
@@ -107,6 +126,28 @@ extern "C" int __syscall_gettod_r (struct _reent *ptr, struct timeval *tp, struc
 	}
 
 	return 0;
+}
+
+void gbaCheckStack () {
+	unsigned int* guard = stackBottom();
+
+	for (int i = 0; i < stackGuardWords; i++) {
+		if (guard[i] != stackFill) {
+			// The overflow may have hit the stdio device table, so bypass it
+			const char message[] = "Stack overflow: the stack reached the IWRAM data.";
+			memcpy(line, message, sizeof(message) - 1);
+			lineLength = sizeof(message) - 1;
+			flushLine();
+			while (true) VBlankIntrWait();
+		}
+	}
+}
+
+int gbaFreeStack () {
+	unsigned int* p = stackBottom();
+	while (*p == stackFill) p++;
+
+	return reinterpret_cast<char*>(p) - reinterpret_cast<char*>(stackBottom());
 }
 
 GbaPlatform::GbaPlatform() {

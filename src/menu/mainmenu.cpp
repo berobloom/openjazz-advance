@@ -53,8 +53,19 @@ MainMenu::MainMenu () {
 	// Load the OpenJazz logo
 
 	unsigned char* pixels = new unsigned char[oj_logo.size];
-	size_t res = tinfl_decompress_mem_to_mem(pixels, oj_logo.size, oj_logo.data,
-		oj_logo.compressed_size, TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF|TINFL_FLAG_PARSE_ZLIB_HEADER);
+
+	// The decompressor's tables (about 11 KB) are too big for small stacks
+	tinfl_decompressor* decomp = tinfl_decompressor_alloc();
+	size_t res = TINFL_DECOMPRESS_MEM_TO_MEM_FAILED;
+	if (decomp) {
+		size_t inSize = oj_logo.compressed_size;
+		size_t outSize = oj_logo.size;
+		tinfl_init(decomp);
+		if (tinfl_decompress(decomp, oj_logo.data, &inSize, pixels, pixels, &outSize,
+			TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF|TINFL_FLAG_PARSE_ZLIB_HEADER) == TINFL_STATUS_DONE)
+			res = outSize;
+		tinfl_decompressor_free(decomp);
+	}
 	if (res == TINFL_DECOMPRESS_MEM_TO_MEM_FAILED || res != oj_logo.size) {
 
 		LOG_WARN("Could not uncompress logo (expected: %d, actual: %zu).", oj_logo.size, res);
