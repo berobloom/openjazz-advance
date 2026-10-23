@@ -19,16 +19,27 @@
 #ifndef _PLASMA_H
 #define _PLASMA_H
 
+#include <cstdint>
+#include <vector>
+
+#include "SDL_wrapper.h"
+
+#define T_PLASMA_STEP 20 ///< Time per step of the plasma's movement
+#define MAX_PLASMA_STEPS 4 ///< Most steps the plasma moves in one frame
+
 /// Main menu background plasma effect
 class Plasma {
 
 	private:
 		int p0,p1,p2,p3;
+		unsigned int lastTicks; ///< Time of the last frame, or 0 before the first
+		std::vector<unsigned int> columns; ///< Per-column part of the current frame
+		std::vector<uint32_t> columnPairs; ///< The same, two columns to a word
 
 	public:
 		Plasma ();
 
-		int draw();
+		int draw(SDL_Surface *overlay = nullptr, int overlayX = 0, int overlayY = 0);
 
 };
 

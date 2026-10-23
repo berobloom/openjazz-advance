@@ -420,14 +420,20 @@ int MainMenu::run () {
 		//as long as we're drawing plasma, we don't need to clear the screen.
 		//video.clearScreen(28);
 
-		plasma.draw();
+		// The background goes over the plasma, logo and version string. It is
+		// drawn with the plasma, and again over the logo and the text.
+		int backgroundX = (canvasW - SW) >> 1;
+		int backgroundY = (canvasH - SH) >> 1;
+		plasma.draw(background, backgroundX, backgroundY);
 
 		// draw logo and version string
 
+		SDL_Rect logoRect = {0, 0, 0, 0};
 		if (logo) {
 			dst.x = (canvasW >> 2) - 72;
 			dst.y = canvasH - (canvasH >> 2);
 			SDL_BlitSurface(logo, NULL, canvas, &dst);
+			logoRect = dst;
 		}
 
 		panelBigFont->mapPalette(0, MAX_PALETTE_COLORS, 8, 8);
@@ -436,9 +442,18 @@ int MainMenu::run () {
 		panelBigFont->showString(oj_version, canvasW - 16, canvasH, alignX::Right, alignY::Bottom);
 		panelBigFont->restorePalette();
 
-		dst.x = (canvasW - SW) >> 1;
-		dst.y = (canvasH - SH) >> 1;
-		SDL_BlitSurface(background, NULL, canvas, &dst);
+		int textHeight = panelBigFont->getHeight() * 2;
+		SDL_Rect textRect = {0, static_cast<decltype(textRect.y)>(canvasH - textHeight),
+			static_cast<decltype(textRect.w)>(canvasW), static_cast<decltype(textRect.h)>(textHeight)};
+
+		for (SDL_Rect rect: {logoRect, textRect}) {
+			// From canvas to background coordinates
+			rect.x -= backgroundX;
+			rect.y -= backgroundY;
+			dst.x = backgroundX + rect.x;
+			dst.y = backgroundY + rect.y;
+			SDL_BlitSurface(background, &rect, canvas, &dst);
+		}
 
 		dst.x = ((canvasW - SW) >> 1) + options[option].x;
 		dst.y = ((canvasH - SH) >> 1) + options[option].y;
