@@ -26,7 +26,15 @@
 #include "io/log.h"
 
 #include <stb_rect_pack.h>
+#include <cstdint>
 #include <string.h>
+
+#if OJ_PACK
+	#include "io/pack.h"
+#endif
+#if OJ_DEV_HOOKS
+	#include "dev/devhooks.h"
+#endif
 
 namespace {
 	constexpr unsigned int INVALID_FONT_CHAR = -1;
@@ -51,6 +59,81 @@ void Font::cleanMapping() {
 			map[i] = INVALID_FONT_CHAR;
 	}
 }
+
+/**
+ * Use the font's atlas from the game data pack, which saves building it in
+ * RAM. Character sizes must already be set.
+ *
+ * @param fileName File the font comes from
+ * @param param Which font of the file
+ * @param aW Atlas width
+ * @param aH Atlas height
+ *
+ * @return Whether the pack has the atlas
+ */
+bool Font::useBakedAtlas (const char* fileName, int param, int aW, int aH) {
+#if OJ_PACK
+	const BakePackFile* file = packFindFile(fileName);
+	if (!file) return false;
+
+	const BakePackEntry* entry = packFindDecoded(file, 0, BAKE_FONT_ATLAS, -1, param);
+	if (!entry || entry->length != static_cast<uint32_t>(nCharacters * 4 + aW * aH)) return false;
+
+	const unsigned char* data = packData(entry->dataOffset);
+	characterAtlas = video.createSurface(data + nCharacters * 4, aW, aH);
+	if (!characterAtlas) return false;
+
+	const int16_t* positions = reinterpret_cast<const int16_t*>(data);
+	for (int i = 0; i < nCharacters; i++) {
+		atlasRects[i].x = positions[i * 2];
+		atlasRects[i].y = positions[(i * 2) + 1];
+	}
+
+	return true;
+#else
+	OJ_UNUSED(fileName);
+	OJ_UNUSED(param);
+	OJ_UNUSED(aW);
+	OJ_UNUSED(aH);
+
+	return false;
+#endif
+}
+
+
+/**
+ * Pass the atlas to the developer tools: character positions as pairs of
+ * 16-bit numbers, then the pixels.
+ */
+void Font::recordAtlas (const char* fileName, int param, int aW, int aH) {
+#if OJ_DEV_HOOKS
+	int length = nCharacters * 4 + aW * aH;
+	unsigned char* data = new unsigned char[length];
+
+	int16_t* positions = reinterpret_cast<int16_t*>(data);
+	for (int i = 0; i < nCharacters; i++) {
+		positions[i * 2] = atlasRects[i].x;
+		positions[(i * 2) + 1] = atlasRects[i].y;
+	}
+
+	if (SDL_MUSTLOCK(characterAtlas)) SDL_LockSurface(characterAtlas);
+	for (int y = 0; y < aH; y++)
+		memcpy(data + nCharacters * 4 + (y * aW),
+			static_cast<unsigned char*>(characterAtlas->pixels) + (y * characterAtlas->pitch), aW);
+	if (SDL_MUSTLOCK(characterAtlas)) SDL_UnlockSurface(characterAtlas);
+
+	// The file's data is still read, so no hole
+	devDecoded(fileName, 0, 0, 0, BAKE_FONT_ATLAS, param, data, length);
+
+	delete[] data;
+#else
+	OJ_UNUSED(fileName);
+	OJ_UNUSED(param);
+	OJ_UNUSED(aW);
+	OJ_UNUSED(aH);
+#endif
+}
+
 
 /**
  * Load a font from the given .0FN file.
@@ -78,9 +161,9 @@ Font::Font (const char* fileName) {
 	lineHeight = file->loadChar();
 	LOG_MAX("spaceWidth: %d, lineHeight: %d", spaceWidth, lineHeight);
 
-	// temporary character data
-	SDL_Surface *chars[MAX_FONT_CHARS];
-	stbrp_rect rects[MAX_FONT_CHARS];
+	// temporary character data, on the heap as it is too big for small stacks
+	SDL_Surface **chars = new SDL_Surface*[MAX_FONT_CHARS];
+	stbrp_rect *rects = new stbrp_rect[MAX_FONT_CHARS];
 
 	// Load characters
 	for (int i = 0; i < MAX_FONT_CHARS; i++) {
@@ -123,32 +206,38 @@ Font::Font (const char* fileName) {
 	// Pack all characters in a 128x128 pixels surface
 	int aW = 128;
 	int aH = 128;
-	characterAtlas = video.createSurface(nullptr, aW, aH);
+	bool res = useBakedAtlas(fileName, 0, aW, aH);
+	if (!res) {
+		characterAtlas = video.createSurface(nullptr, aW, aH);
+
+		stbrp_context ctx;
+		stbrp_node nodes[aW];
+		stbrp_init_target(&ctx, aW, aH, nodes, aW);
+
+		res = stbrp_pack_rects(&ctx, rects, nCharacters);
+		if(res) {
+			for (int i = 0; i < nCharacters; i++) {
+				// save position
+				atlasRects[i].x = rects[i].x;
+				atlasRects[i].y = rects[i].y;
+
+				// copy char to atlas
+				if (rects[i].w > 0 && rects[i].h > 0)
+					SDL_BlitSurface(chars[i], nullptr, characterAtlas, &atlasRects[i]);
+			}
+		} else
+			LOG_WARN("Could not pack font atlas!");
+	}
+	if (res) recordAtlas(fileName, 0, aW, aH);
 	video.enableColorKey(characterAtlas, 0);
-
-	stbrp_context ctx;
-	stbrp_node nodes[aW];
-	stbrp_init_target(&ctx, aW, aH, nodes, aW);
-
-	bool res = stbrp_pack_rects(&ctx, rects, nCharacters);
-	if(res) {
-		for (int i = 0; i < nCharacters; i++) {
-			// save position
-			atlasRects[i].x = rects[i].x;
-			atlasRects[i].y = rects[i].y;
-
-			// copy char to atlas
-			if (rects[i].w > 0 && rects[i].h > 0)
-				SDL_BlitSurface(chars[i], nullptr, characterAtlas, &atlasRects[i]);
-		}
-	} else
-		LOG_WARN("Could not pack font atlas!");
 
 	// Delete single char surfaces
 	for (int i = 0; i < nCharacters; i++) {
 		if(rects[i].w > 0 && rects[i].h > 0)
 			video.destroySurface(chars[i]);
 	}
+	delete[] chars;
+	delete[] rects;
 
 	// Create ASCII->font map
 	map[33] = 107; // !
@@ -198,9 +287,9 @@ Font::Font (unsigned char* pixels, bool big) {
 		lineHeight = 7;
 	}
 
-	// temporary character data
-	SDL_Surface *chars[nCharacters];
-	stbrp_rect rects[MAX_FONT_CHARS];
+	// temporary character data, on the heap as it is too big for small stacks
+	SDL_Surface **chars = new SDL_Surface*[MAX_FONT_CHARS];
+	stbrp_rect *rects = new stbrp_rect[MAX_FONT_CHARS];
 
 	unsigned char* chrPixels = new unsigned char[charWidth * lineHeight];
 
@@ -233,29 +322,35 @@ Font::Font (unsigned char* pixels, bool big) {
 		aH = 4 * lineHeight;
 	}
 
-	characterAtlas = video.createSurface(nullptr, aW, aH);
+	bool res = useBakedAtlas("PANEL.000", big? 1: 2, aW, aH);
+	if (!res) {
+		characterAtlas = video.createSurface(nullptr, aW, aH);
+
+		stbrp_context ctx;
+		stbrp_node nodes[aW];
+		stbrp_init_target(&ctx, aW, aH, nodes, aW);
+
+		res = stbrp_pack_rects(&ctx, rects, nCharacters);
+		if(res) {
+			for (int i = 0; i < nCharacters; i++) {
+				// save position
+				atlasRects[i].x = rects[i].x;
+				atlasRects[i].y = rects[i].y;
+
+				// copy char to atlas
+				SDL_BlitSurface(chars[i], nullptr, characterAtlas, &atlasRects[i]);
+			}
+		} else
+			LOG_WARN("Could not pack font atlas!");
+	}
+	if (res) recordAtlas("PANEL.000", big? 1: 2, aW, aH);
 	if (big) video.enableColorKey(characterAtlas, 31);
-
-	stbrp_context ctx;
-	stbrp_node nodes[aW];
-	stbrp_init_target(&ctx, aW, aH, nodes, aW);
-
-	bool res = stbrp_pack_rects(&ctx, rects, nCharacters);
-	if(res) {
-		for (int i = 0; i < nCharacters; i++) {
-			// save position
-			atlasRects[i].x = rects[i].x;
-			atlasRects[i].y = rects[i].y;
-
-			// copy char to atlas
-			SDL_BlitSurface(chars[i], nullptr, characterAtlas, &atlasRects[i]);
-		}
-	} else
-		LOG_WARN("Could not pack font atlas!");
 
 	// Delete single char surfaces
 	for (int i = 0; i < nCharacters; i++)
 		video.destroySurface(chars[i]);
+	delete[] chars;
+	delete[] rects;
 
 	// Create ASCII->font map
 	if (big) {
@@ -309,9 +404,9 @@ Font::Font (bool bonus) {
 		}
 	}
 
-	// temporary character data
-	SDL_Surface *chars[MAX_FONT_CHARS];
-	stbrp_rect rects[MAX_FONT_CHARS];
+	// temporary character data, on the heap as it is too big for small stacks
+	SDL_Surface **chars = new SDL_Surface*[MAX_FONT_CHARS];
+	stbrp_rect *rects = new stbrp_rect[MAX_FONT_CHARS];
 
 	// Load characters
 	for (int i = 0; i < nCharacters; i++) {
@@ -354,29 +449,35 @@ Font::Font (bool bonus) {
 	// Pack all characters in a 160x160 pixels surface
 	int aW = 160;
 	int aH = 160;
-	characterAtlas = video.createSurface(nullptr, aW, aH);
+	bool res = useBakedAtlas(bonus? "BONUS.000": "FONTS.000", 0, aW, aH);
+	if (!res) {
+		characterAtlas = video.createSurface(nullptr, aW, aH);
+
+		stbrp_context ctx;
+		stbrp_node nodes[aW];
+		stbrp_init_target(&ctx, aW, aH, nodes, aW);
+
+		res = stbrp_pack_rects(&ctx, rects, nCharacters);
+		if(res) {
+			for (int i = 0; i < nCharacters; i++) {
+				// save position
+				atlasRects[i].x = rects[i].x;
+				atlasRects[i].y = rects[i].y;
+
+				// copy char to atlas
+				SDL_BlitSurface(chars[i], nullptr, characterAtlas, &atlasRects[i]);
+			}
+		} else
+			LOG_WARN("Could not pack font atlas!");
+	}
+	if (res) recordAtlas(bonus? "BONUS.000": "FONTS.000", 0, aW, aH);
 	video.enableColorKey(characterAtlas, 254);
-
-	stbrp_context ctx;
-	stbrp_node nodes[aW];
-	stbrp_init_target(&ctx, aW, aH, nodes, aW);
-
-	bool res = stbrp_pack_rects(&ctx, rects, nCharacters);
-	if(res) {
-		for (int i = 0; i < nCharacters; i++) {
-			// save position
-			atlasRects[i].x = rects[i].x;
-			atlasRects[i].y = rects[i].y;
-
-			// copy char to atlas
-			SDL_BlitSurface(chars[i], nullptr, characterAtlas, &atlasRects[i]);
-		}
-	} else
-		LOG_WARN("Could not pack font atlas!");
 
 	// Delete single char surfaces
 	for (int i = 0; i < nCharacters; i++)
 		video.destroySurface(chars[i]);
+	delete[] chars;
+	delete[] rects;
 
 	// Create ASCII->font map
 	if (bonus) {

@@ -33,6 +33,8 @@ class Font {
 	private:
 		void           commonSetup();
 		void           cleanMapping();
+		bool           useBakedAtlas(const char* fileName, int param, int aW, int aH);
+		void           recordAtlas(const char* fileName, int param, int aW, int aH);
 		SDL_Surface   *characterAtlas; ///< Symbol images
 		SDL_Rect       atlasRects[MAX_FONT_CHARS]; ///< Symbol positions
 		bool           isOk; ///< Font is loaded and usable

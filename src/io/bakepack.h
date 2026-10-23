@@ -34,7 +34,8 @@ enum BakeKind {
 	BAKE_RLE = 1,           ///< File::loadRLE()
 	BAKE_PIXELS = 2,        ///< File::loadPixels(length)
 	BAKE_MASKED_PIXELS = 3, ///< File::loadPixels(length, key); param is the key
-	BAKE_TILESET = 4        ///< JJ1Level::loadTiles(), all tiles of a BLOCKS file
+	BAKE_TILESET = 4,       ///< JJ1Level::loadTiles(), all tiles of a BLOCKS file
+	BAKE_FONT_ATLAS = 5     ///< A Font's character atlas; param tells fonts of one file apart
 };
 
 struct BakePackHeader {
