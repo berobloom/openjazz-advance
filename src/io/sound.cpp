@@ -533,6 +533,26 @@ bool loadSounds (const char *fileName) {
 }
 
 
+#if OJ_MEMSTATS
+/**
+ * Heap held by sound effects, for the memstats developer tool.
+ *
+ * @return Bytes of raw and resampled sound data
+ */
+long soundMemory () {
+	long total = 0;
+
+	for (int i = 0; i < nRawSounds; i++)
+		total += rawSounds[i].length;
+
+	for (int i = 0; i < SE::MAX; i++)
+		if (sounds[i].data) total += sounds[i].length;
+
+	return total;
+}
+#endif
+
+
 /**
  * Resample sound clip data.
  */

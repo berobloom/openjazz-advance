@@ -57,6 +57,9 @@
 #include "io/log.h"
 #include "platforms/platforms.h"
 #include "version.h"
+#if OJ_MEMSTATS
+	#include "dev/memstats.h"
+#endif
 
 #if !OJ_SDL3
 	// Define some stuff to be SDL3 compatible
@@ -402,6 +405,12 @@ int play () {
 
 	MainMenu *mainMenu = NULL;
 	JJ1Scene *scene = NULL;
+
+#if OJ_MEMSTATS
+	// Developer sweep for sizing the GBA port; see dev/memstats.cpp
+	if (const char* memstatsDir = getenv("OJ_MEMSTATS"))
+		return memstatsSweep(memstatsDir);
+#endif
 
 	// Start the opening music
 

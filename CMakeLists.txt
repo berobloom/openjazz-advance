@@ -255,6 +255,15 @@ if(ENABLE_JJ2)
 	target_compile_definitions(OpenJazz PRIVATE ENABLE_JJ2)
 endif()
 
+option(MEMSTATS "Developer tool: heap tracking and level sweep for sizing ports (glibc only)" OFF)
+mark_as_advanced(MEMSTATS)
+if(MEMSTATS)
+	target_sources(OpenJazz PRIVATE
+		src/dev/memstats.cpp
+		src/dev/memstats.h)
+	target_compile_definitions(OpenJazz PRIVATE OJ_MEMSTATS)
+endif()
+
 # version
 
 string(TIMESTAMP OJ_DATE "%Y-%m-%d")
