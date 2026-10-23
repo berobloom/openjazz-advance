@@ -421,6 +421,15 @@ elseif(GBA)
 	set_source_files_properties(src/platforms/gba/pack.S PROPERTIES
 		COMPILE_DEFINITIONS "GBA_PACK_FILE=\"${GBA_PACK}\""
 		OBJECT_DEPENDS "${GBA_PACK}")
+	option(GBA_HEAP_TRACE "Report the live heap blocks by caller when RAM runs out" OFF)
+	if(GBA_HEAP_TRACE)
+		target_sources(OpenJazz PRIVATE
+			src/platforms/gba/heaptrace.cpp
+			src/platforms/gba/heaptrace.h)
+		target_compile_definitions(OpenJazz PRIVATE OJ_GBA_HEAP_TRACE)
+		target_link_options(OpenJazz PRIVATE
+			-Wl,--wrap=malloc,--wrap=free,--wrap=realloc,--wrap=calloc)
+	endif()
 	gba_create_rom(OpenJazz TITLE "OPENJAZZ" GAMECODE "COJE" MAKERCODE "00")
 elseif(WII)
 	target_sources(OpenJazz PRIVATE

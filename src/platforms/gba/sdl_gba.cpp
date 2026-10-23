@@ -26,6 +26,10 @@
 #include "blit_gba.h"
 #include "platforms/gba.h"
 
+#ifdef OJ_GBA_HEAP_TRACE
+	#include "heaptrace.h"
+#endif
+
 #include <gba_dma.h>
 #include <gba_input.h>
 #include <gba_interrupt.h>
@@ -149,6 +153,9 @@ namespace {
 				struct mallinfo info = mallinfo();
 				fprintf(stderr, "Surface %dx%d does not fit: %d bytes in use, %d free in heap\n",
 					width, height, info.uordblks, info.fordblks);
+#ifdef OJ_GBA_HEAP_TRACE
+				gbaHeapTraceReport();
+#endif
 				free(s);
 				lastError = "Out of memory";
 				return nullptr;

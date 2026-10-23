@@ -17,6 +17,14 @@
 
 #include "io/log.h"
 
+#ifdef OJ_GBA_HEAP_TRACE
+	#include "gba/heaptrace.h"
+#endif
+
+#include <malloc.h>
+#include <new>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/iosupport.h>
 #include <sys/time.h>
@@ -126,6 +134,40 @@ extern "C" int __syscall_gettod_r (struct _reent *ptr, struct timeval *tp, struc
 	}
 
 	return 0;
+}
+
+/* Report allocations that do not fit, as they are the usual way the port
+   runs out of RAM. */
+namespace {
+
+	void* allocate (size_t size, void* caller) {
+		void* p = malloc(size ? size : 1);
+
+		if (!p) {
+			struct mallinfo info = mallinfo();
+			fprintf(stderr, "Allocation of %u bytes from %p does not fit: %d bytes in use, %d free in heap\n",
+				static_cast<unsigned int>(size), caller, info.uordblks, info.fordblks);
+#ifdef OJ_GBA_HEAP_TRACE
+			gbaHeapTraceReport();
+#endif
+			throw std::bad_alloc();
+		}
+
+#ifdef OJ_GBA_HEAP_TRACE
+		gbaHeapTraceCaller(p, caller);
+#endif
+
+		return p;
+	}
+
+}
+
+void* operator new (size_t size) {
+	return allocate(size, __builtin_return_address(0));
+}
+
+void* operator new[] (size_t size) {
+	return allocate(size, __builtin_return_address(0));
 }
 
 void gbaCheckStack () {
