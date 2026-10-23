@@ -72,6 +72,8 @@ JJ1Level::JJ1Level (Game* owner) : Level(owner) {
 		panelBG[i] = nullptr;
 	events = nullptr;
 	bullets = nullptr;
+	for (int i = 0; i < PATHS; i++)
+		path[i].x = path[i].y = nullptr;
 	sceneFile = nullptr;
 	spriteSet = nullptr;
 	sky = false;
