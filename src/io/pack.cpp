@@ -19,10 +19,16 @@
  * made from pack pixels use them in place (see Video::createSurface).
  *
  * On the desktop the pack is the file named by the OJ_PACK environment
- * variable, mapped read-only so that any write to it faults.
+ * variable, mapped read-only so that any write to it faults. On the GBA it is
+ * built into the cartridge ROM.
  *
  */
 
+
+// newlib only declares fopencookie() for GNU sources
+#ifndef _GNU_SOURCE
+	#define _GNU_SOURCE
+#endif
 
 #include "pack.h"
 #include "io/log.h"
@@ -46,6 +52,11 @@
 	typedef _off64_t pack_off_t;
 #else
 	typedef off64_t pack_off_t;
+#endif
+
+#ifdef __GBA__
+// Built into the cartridge ROM by platforms/gba/pack.S
+extern "C" const unsigned char gbaPackStart[], gbaPackEnd[];
 #endif
 
 namespace {
@@ -91,6 +102,9 @@ namespace {
 
 		pack = static_cast<const unsigned char*>(map);
 		packSize = st.st_size;
+#elif defined(__GBA__)
+		pack = gbaPackStart;
+		packSize = gbaPackEnd - gbaPackStart;
 #else
 		return false;
 #endif

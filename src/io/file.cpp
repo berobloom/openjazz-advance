@@ -178,6 +178,10 @@ bool File::exists (const char * fileName, int pathType) {
 
 	bool exists = false;
 
+#if OJ_PACK
+	if ((pathType & PATH_TYPE_GAME) && packFindFile(fileName)) return true;
+#endif
+
 	Path* path = gamePaths.paths;
 	while (path) {
 		// skip other paths

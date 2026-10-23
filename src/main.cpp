@@ -90,7 +90,12 @@ static struct CliOptions {
 	bool quiet;
 	bool logfile;
 } cli = {
-	false, -1, -1, -1, -1, NULL, false, true
+	false, -1, -1, -1, -1, NULL, false,
+#ifdef NO_LOGFILE
+	false
+#else
+	true
+#endif
 };
 
 #ifndef FULLSCREEN_ONLY
@@ -450,6 +455,7 @@ int play () {
 	}
 
 
+#ifndef NO_STARTUP_SCENE
 	// Load and play the startup cutscene
 
 	try {
@@ -471,6 +477,7 @@ int play () {
 	}
 
 	delete scene;
+#endif
 
 
 	// Load and run the menu

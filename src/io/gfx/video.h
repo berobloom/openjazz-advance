@@ -70,7 +70,9 @@
 #endif
 
 // Time interval
-#define T_MENU_FRAME 20
+#ifndef T_MENU_FRAME
+	#define T_MENU_FRAME 20
+#endif
 
 // Class
 

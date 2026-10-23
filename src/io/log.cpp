@@ -19,6 +19,7 @@
 #include "log.h"
 #include "file.h"
 #include "util.h"
+#include "platforms/platforms.h"
 #include <cstdarg>
 #include <ctime>
 #include <cstring>
@@ -112,7 +113,11 @@ Log::Log () {
 
 	level = LL_DEBUG;
 	quiet = false;
+#ifdef NO_LOGFILE
+	logToFile = false;
+#else
 	logToFile = true;
+#endif
 	logfile = nullptr;
 	color_stdout = false;
 	color_stderr = false;
@@ -332,6 +337,8 @@ void Log::log(int lvl, const char *file, int line, const char *fmt, ...) {
 
 		#undef LOG
 	}
+
+	if (!logToFile) return;
 
 	// Log to file (buffer in queue)
 	char timebuf[20];

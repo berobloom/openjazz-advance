@@ -18,6 +18,9 @@ target_link_libraries(OpenJazz PRIVATE miniz)
 
 # xmp
 
+if(GBA)
+	set(XMP_STATUS "None (GBA)")
+else()
 find_package(libxmp 4.7.0 QUIET)
 if(libxmp_FOUND)
 	if(TARGET libxmp::xmp_shared)
@@ -31,6 +34,7 @@ else()
 	add_subdirectory(xmp)
 	target_link_libraries(OpenJazz PRIVATE xmp)
 	set(XMP_STATUS "eXtended Masi Player (internal)")
+endif()
 endif()
 set(XMP_STATUS ${XMP_STATUS} CACHE STRING "Which xmp library is used" FORCE)
 

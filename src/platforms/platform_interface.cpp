@@ -38,6 +38,8 @@ IPlatform* IPlatform::make() {
 	return new ApplePlatform();
 #elif defined(__ANDROID__)
 	return new AndroidPlatform();
+#elif defined(__GBA__)
+	return new GbaPlatform();
 #else
 	// using the stuff below
 	return new DefaultPlatform();

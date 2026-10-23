@@ -24,6 +24,7 @@
 #include "dingoo.h"
 #include "emscripten.h"
 #include "gameshell.h"
+#include "gba.h"
 #include "gp2x_wiz_canoo.h"
 #include "haiku.h"
 #include "psp.h"
@@ -35,6 +36,11 @@
 #include "xdg.h"
 
 #include "platform_interface.h"
+
+/// Marks a function the platform should place in its fastest memory
+#ifndef OJ_FAST_CODE
+	#define OJ_FAST_CODE
+#endif
 
 class DefaultPlatform final : public IPlatform {
 };

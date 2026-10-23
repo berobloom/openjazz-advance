@@ -113,6 +113,10 @@ set(OJ_SOURCES
 	src/jj1/scene/jj1scene.cpp
 	src/jj1/scene/jj1scene.h
 	src/jj1/scene/jj1sceneload.cpp)
+if(GBA)
+	# silent until the audio is converted for the GBA
+	list(REMOVE_ITEM OJ_SOURCES src/io/sound.cpp)
+endif()
 if(ANDROID)
 	add_library(OpenJazz SHARED ${OJ_SOURCES})
 	enable_language(C)
@@ -171,6 +175,11 @@ elseif(EMSCRIPTEN)
 	target_compile_options(OpenJazz PRIVATE "--use-port=sdl2;-flto;-fexceptions")
 	target_compile_definitions(OpenJazz PRIVATE OJ_SDL2)
 	set(SDL_STATUS "SDL2 (emscripten port)")
+elseif(GBA)
+	# minimal SDL 1.2 stand-in
+	target_compile_definitions(OpenJazz PRIVATE OJ_SDL1)
+	target_include_directories(OpenJazz PRIVATE src/platforms/gba/sdl)
+	set(SDL_STATUS "SDL1.2 (GBA stand-in)")
 elseif(LEGACY_SDL)
 	find_package(SDL REQUIRED)
 	target_compile_definitions(OpenJazz PRIVATE OJ_SDL1)
@@ -202,7 +211,7 @@ endif()
 # network
 
 set(NETWORK_STATUS "Disabled")
-option(NETWORK "Enable Network support" ON)
+cmake_dependent_option(NETWORK "Enable Network support" ON "NOT GBA" OFF)
 if(NETWORK)
 	include(CheckIncludeFileCXX)
 	check_include_file_cxx(winsock.h HAVE_WINSOCK)
@@ -257,7 +266,8 @@ endif()
 
 option(MEMSTATS "Developer tool: heap tracking and level sweep for sizing ports (glibc only)" OFF)
 option(BAKE "Developer tool: build the baked game data pack for ports with little RAM" OFF)
-option(PACK "Load game data from a baked pack (desktop: OJ_PACK=<file>), for testing ports" OFF)
+cmake_dependent_option(PACK "Load game data from a baked pack (desktop: OJ_PACK=<file>), for testing ports" OFF
+	"NOT GBA" ON)
 mark_as_advanced(MEMSTATS BAKE PACK)
 if(MEMSTATS OR BAKE)
 	target_sources(OpenJazz PRIVATE
@@ -391,6 +401,27 @@ elseif(SWITCH)
 		NACP OpenJazz.nacp
 		ICON ${CMAKE_CURRENT_SOURCE_DIR}/res/switch/OpenJazz.jpg
 		${ROMFS_ARG} ${ROMFS_PATH})
+elseif(GBA)
+	set(GBA_PACK "" CACHE FILEPATH "Baked game data pack to build into the ROM (see BAKE)")
+	if(NOT GBA_PACK)
+		message(FATAL_ERROR "Set GBA_PACK to a game data pack made with a BAKE build.")
+	endif()
+	enable_language(ASM)
+	target_sources(OpenJazz PRIVATE
+		src/platforms/gba.cpp
+		src/platforms/gba.h
+		src/platforms/gba/pack.S
+		src/platforms/gba/blit_gba.h
+		src/platforms/gba/blit_gba.iwram.cpp
+		src/platforms/gba/sdl/SDL.h
+		src/platforms/gba/sdl_gba.cpp
+		src/platforms/gba/sound_gba.cpp)
+	# single thread, and the guards' condition variables are not implemented
+	target_compile_options(OpenJazz PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-fno-threadsafe-statics>)
+	set_source_files_properties(src/platforms/gba/pack.S PROPERTIES
+		COMPILE_DEFINITIONS "GBA_PACK_FILE=\"${GBA_PACK}\""
+		OBJECT_DEPENDS "${GBA_PACK}")
+	gba_create_rom(OpenJazz TITLE "OPENJAZZ" GAMECODE "COJE" MAKERCODE "00")
 elseif(WII)
 	target_sources(OpenJazz PRIVATE
 		src/platforms/wii.cpp
