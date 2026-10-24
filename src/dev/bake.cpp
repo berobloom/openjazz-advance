@@ -116,11 +116,14 @@ void bakeRecord (const char* path, int offset, int holeStart, int end,
 
 	std::string name = baseName(path);
 
-	/* Level and bonus level data is copied out of the decoded buffer into the
-	   level's own structures, so a decoded copy in ROM would only save RAM
-	   briefly while loading, at several times the size of the original. */
+	/* Level data is copied out of the decoded buffer into the level's own
+	   structures, so a decoded copy in ROM would only save RAM briefly while
+	   loading, at several times the size of the original. Bonus levels are
+	   the same, except for their tile and event layers, which are used in
+	   place. */
 	std::string group = category(name);
-	if (group == "LEVEL" || group == "BONUSMAP") return;
+	if (group == "LEVEL") return;
+	if (group == "BONUSMAP" && !(kind == BAKE_RLE && length == 256 * 256)) return;
 	std::string bytes(reinterpret_cast<const char*>(data), length);
 	RecordKey key(name, offset, kind, length, param);
 

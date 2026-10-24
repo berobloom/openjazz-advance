@@ -37,6 +37,12 @@
 #include "io/log.h"
 #include "util.h"
 
+#if OJ_PACK
+	#include "io/pack.h"
+#endif
+
+#include <algorithm>
+#include <memory>
 #include <string.h>
 
 
@@ -192,6 +198,31 @@ int JJ1BonusLevel::loadTiles (char *fileName) {
  * @param fileName Name of the file containing the level data.
  * @param multi Whether or not the level will be multi-player
  */
+namespace {
+
+	/**
+	 * Make a layer of the grid writable, by copying it if it is the game data
+	 * pack's read-only copy.
+	 *
+	 * @param layer The layer
+	 */
+	void makeWritable (unsigned char*& layer) {
+
+#if OJ_PACK
+		if (packContains(layer)) {
+			unsigned char* copy = new unsigned char[BLW * BLH];
+			memcpy(copy, layer, BLW * BLH);
+			layer = copy;
+		}
+#else
+		OJ_UNUSED(layer);
+#endif
+
+	}
+
+}
+
+
 JJ1BonusLevel::JJ1BonusLevel (Game* owner, char * fileName, bool multi) : Level(owner) {
 
 	Anim* pAnims[BPANIMS];
@@ -306,21 +337,20 @@ JJ1BonusLevel::JJ1BonusLevel (Game* owner, char * fileName, bool multi) : Level(
 
 
 	// Load tiles
-	buffer = file->loadRLE(BLW * BLH);
+	tiles = file->loadRLE(BLW * BLH);
 
-	for (y = 0; y < BLH; y++) {
-		for (x = 0; x < BLW; x++) {
+	if (std::any_of(tiles, tiles + BLW * BLH, [](unsigned char tile) { return tile > 59; })) {
 
-			grid[y][x].tile = buffer[x + (y * BLW)];
-			if (grid[y][x].tile > 59) {
-				LOG_DEBUG("Clipping Tile index %d > %d", grid[y][x].tile, 59);
-				grid[y][x].tile = 59;
+		makeWritable(tiles);
+
+		for (count = 0; count < BLW * BLH; count++) {
+			if (tiles[count] > 59) {
+				LOG_DEBUG("Clipping Tile index %d > %d", tiles[count], 59);
+				tiles[count] = 59;
 			}
-
 		}
-	}
 
-	delete[] buffer;
+	}
 
 
 	// Load event properties
@@ -354,17 +384,7 @@ JJ1BonusLevel::JJ1BonusLevel (Game* owner, char * fileName, bool multi) : Level(
 
 
 	// Load event mapping
-	buffer = file->loadRLE(BLW * BLH);
-
-	for (y = 0; y < BLW; y++) {
-		for (x = 0; x < BLH; x++) {
-
-			grid[y][x].event = buffer[x + (y * BLW)];
-
-		}
-	}
-
-	delete[] buffer;
+	events = file->loadRLE(BLW * BLH);
 
 
 	// Load sound map
@@ -440,6 +460,9 @@ JJ1BonusLevel::~JJ1BonusLevel () {
 
 	delete[] spriteSet;
 
+	delete[] tiles;
+	delete[] events;
+
 	delete font;
 
 	resampleSounds();
@@ -475,14 +498,51 @@ bool JJ1BonusLevel::isEvent (fixed x, fixed y) {
  */
 bool JJ1BonusLevel::checkMask (fixed x, fixed y) {
 
-	JJ1BonusLevelGridElement *ge = grid[FTOT(y) & 255] + (FTOT(x) & 255);
+	int gridX = FTOT(x) & 255;
+	int gridY = FTOT(y) & 255;
+	unsigned char event = getEvent(gridX, gridY);
 
 	// Bounce back
-	if ((eventSet[ge->event].used) && !(eventSet[ge->event].passable) && isEvent(x, y))
+	if ((eventSet[event].used) && !(eventSet[event].passable) && isEvent(x, y))
 		return true;
 
 	// Check the mask in the tile in question
-	return mask[ge->tile][((y >> 9) & 56) + ((x >> 12) & 7)];
+	return mask[tiles[(gridY * BLW) + gridX]][((y >> 9) & 56) + ((x >> 12) & 7)];
+
+}
+
+
+/**
+ * Get the event type at a grid element.
+ *
+ * @param gridX X-coordinate of the grid element
+ * @param gridY Y-coordinate of the grid element
+ *
+ * @return The event type, or 0 if it was collected
+ */
+unsigned char JJ1BonusLevel::getEvent (int gridX, int gridY) {
+
+	unsigned short element = (gridY * BLW) + gridX;
+
+	if (std::binary_search(takenEvents.begin(), takenEvents.end(), element)) return 0;
+
+	return events[element];
+
+}
+
+
+/**
+ * Remove the event at a grid element, which has been collected.
+ *
+ * @param gridX X-coordinate of the grid element
+ * @param gridY Y-coordinate of the grid element
+ */
+void JJ1BonusLevel::clearEvent (int gridX, int gridY) {
+
+	unsigned short element = (gridY * BLW) + gridX;
+	auto it = std::lower_bound(takenEvents.begin(), takenEvents.end(), element);
+
+	if (it == takenEvents.end() || *it != element) takenEvents.insert(it, element);
 
 }
 
@@ -509,9 +569,21 @@ void JJ1BonusLevel::receive (unsigned char* buffer) {
 
 		case MT_L_GRID:
 
-			if (buffer[4] == 0) grid[buffer[3]][buffer[2]].tile = buffer[5];
-			else if (buffer[4] == 2)
-				grid[buffer[3]][buffer[2]].event = buffer[5];
+			if (buffer[4] == 0) {
+
+				makeWritable(tiles);
+				tiles[(buffer[3] * BLW) + buffer[2]] = buffer[5];
+
+			} else if (buffer[4] == 2) {
+
+				unsigned short element = (buffer[3] * BLW) + buffer[2];
+				auto it = std::lower_bound(takenEvents.begin(), takenEvents.end(), element);
+				if (it != takenEvents.end() && *it == element) takenEvents.erase(it);
+
+				makeWritable(events);
+				events[element] = buffer[5];
+
+			}
 
 			break;
 
@@ -558,22 +630,24 @@ int JJ1BonusLevel::step () {
 			int gridX = FTOT(playerX) & 255;
 			int gridY = FTOT(playerY) & 255;
 
-			// Play sound if available
-			playSound(eventSet[grid[gridY][gridX].event].sound);
+			unsigned char event = getEvent(gridX, gridY);
 
-			switch (eventSet[grid[gridY][gridX].event].type) {
+			// Play sound if available
+			playSound(eventSet[event].sound);
+
+			switch (eventSet[event].type) {
 
 				case 1: // Extra time
 
 					addTimer(60);
-					grid[gridY][gridX].event = 0;
+					clearEvent(gridX, gridY);
 
 					break;
 
 				case 2: // Gem
 
 					bonusPlayer->addGem();
-					grid[gridY][gridX].event = 0;
+					clearEvent(gridX, gridY);
 
 					if (bonusPlayer->getGems() >= items) {
 
@@ -609,6 +683,69 @@ int JJ1BonusLevel::step () {
 	direction = localPlayer->getJJ1BonusLevelPlayer()->getDirection();
 
 	return E_NONE;
+
+}
+
+
+/**
+ * Draw the ground, in perspective.
+ *
+ * @param playerX Player's x-coordinate
+ * @param playerY Player's y-coordinate
+ * @param playerSin Sine of the player's direction
+ * @param playerCos Cosine of the player's direction
+ */
+OJ_FAST_CODE void JJ1BonusLevel::drawGround (fixed playerX, fixed playerY, fixed playerSin, fixed playerCos) {
+
+	if (SDL_MUSTLOCK(canvas)) SDL_LockSurface(canvas);
+
+	// Loop over the canvas rows as stored, from canvasH - 1 up to y = 1
+	int endRow = canvasRows(canvas, canvasH);
+	int endColumn = canvasColumns(canvas, canvasW);
+
+	// How far across the canvas each column is, which only depends on the column
+	std::unique_ptr<fixed[]> across(new fixed[endColumn]);
+	for (int column = 0; column < endColumn; column++)
+		across[column] = ITOF(canvasColumnOf(canvas, column)) / canvasW;
+
+	const unsigned char* tilePixels = static_cast<unsigned char*>(tileSet->pixels);
+	int tilePitch = tileSet->pitch;
+
+	for (int storedRow = canvasRows(canvas, canvasH - ((canvasH >> 1) - 15)); storedRow < endRow; storedRow++) {
+
+		int y = canvasH - canvasRowOf(canvas, storedRow);
+
+		fixed distance = DIV(ITOF(800), ITOF(92) - (ITOF(y * 84) / ((canvasH >> 1) - 16)));
+		fixed sideX = MUL(distance, playerCos);
+		fixed sideY = MUL(distance, playerSin);
+		fixed fwdX = playerX + MUL(distance - F16, playerSin) - (sideX >> 1);
+		fixed fwdY = playerY - MUL(distance - F16, playerCos) - (sideY >> 1);
+
+		unsigned char* row = static_cast<unsigned char*>(canvas->pixels) + (canvas->pitch * storedRow);
+
+		// Neighbouring pixels are mostly in the same grid element
+		int lastElement = -1;
+		const unsigned char* tile = tilePixels;
+
+		for (int column = 0; column < endColumn; column++) {
+
+			fixed nX = across[column];
+			int levelX = FTOI(fwdX + MUL(nX, sideX));
+			int levelY = FTOI(fwdY + MUL(nX, sideY));
+			int element = ((ITOT(levelY) & 255) * BLW) + (ITOT(levelX) & 255);
+
+			if (element != lastElement) {
+				lastElement = element;
+				tile = tilePixels + (tiles[element] << 10);
+			}
+
+			row[column] = tile[((levelY & 31) * tilePitch) + (levelX & 31)];
+
+		}
+
+	}
+
+	if (SDL_MUSTLOCK(canvas)) SDL_UnlockSurface(canvas);
 
 }
 
@@ -652,40 +789,7 @@ void JJ1BonusLevel::draw () {
 	fixed playerSin = fSin(direction);
 	fixed playerCos = fCos(direction);
 
-	if (SDL_MUSTLOCK(canvas)) SDL_LockSurface(canvas);
-
-	// Loop over the canvas rows as stored, from canvasH - 1 up to y = 1
-	int endRow = canvasRows(canvas, canvasH);
-	int endColumn = canvasColumns(canvas, canvasW);
-
-	for (int storedRow = canvasRows(canvas, canvasH - ((canvasH >> 1) - 15)); storedRow < endRow; storedRow++) {
-
-		y = canvasH - canvasRowOf(canvas, storedRow);
-
-		fixed distance = DIV(ITOF(800), ITOF(92) - (ITOF(y * 84) / ((canvasH >> 1) - 16)));
-		fixed sideX = MUL(distance, playerCos);
-		fixed sideY = MUL(distance, playerSin);
-		fixed fwdX = playerX + MUL(distance - F16, playerSin) - (sideX >> 1);
-		fixed fwdY = playerY - MUL(distance - F16, playerCos) - (sideY >> 1);
-
-		unsigned char* row = static_cast<unsigned char*>(canvas->pixels) + (canvas->pitch * storedRow);
-
-		for (int column = 0; column < endColumn; column++) {
-
-			x = canvasColumnOf(canvas, column);
-			fixed nX = ITOF(x) / canvasW;
-			int levelX = FTOI(fwdX + MUL(nX, sideX));
-			int levelY = FTOI(fwdY + MUL(nX, sideY));
-
-			row[column] = static_cast<unsigned char*>(tileSet->pixels)
-				[(grid[ITOT(levelY) & 255][ITOT(levelX) & 255].tile << 10) +
-					((levelY & 31) * tileSet->pitch) + (levelX & 31)];
-
-		}
-
-	}
-
-	if (SDL_MUSTLOCK(canvas)) SDL_UnlockSurface(canvas);
+	drawGround(playerX, playerY, playerSin, playerCos);
 
 
 	// Draw nearby events
@@ -701,8 +805,7 @@ void JJ1BonusLevel::draw () {
 			fixed divisor = F16 + MUL(sX, playerSin) - MUL(sY, playerCos);
 
 			if (FTOI(divisor) > 8) {
-				unsigned char event = grid
-					[(evY + FTOT(playerY)) & 255][(evX + FTOT(playerX)) & 255].event;
+				unsigned char event = getEvent((evX + FTOT(playerX)) & 255, (evY + FTOT(playerY)) & 255);
 
 				if (eventSet[event].type > 0) {
 					anim = animSet + eventSet[event].anim;

@@ -24,6 +24,8 @@
 #include "io/gfx/anim.h"
 #include "level/level.h"
 
+#include <vector>
+
 
 // Constants
 
@@ -38,14 +40,6 @@
 
 
 // Datatype
-
-/// JJ1 bonus level grid element
-typedef struct {
-
-	unsigned char tile;  ///< Indexes the tile set
-	unsigned char event; ///< Event type
-
-} JJ1BonusLevelGridElement;
 
 /// JJ1 bonus level event type
 typedef struct {
@@ -72,7 +66,11 @@ class JJ1BonusLevel : public Level {
 		Sprite*                  spriteSet; ///< Sprite images
 		Anim                     animSet[BANIMS]; ///< Animations
 		JJ1BonusEventType        eventSet[BEVENTS]; ///< Event types
-		JJ1BonusLevelGridElement grid[BLH][BLW]; ///< Level grid
+		/* The grid's layers, BLW * BLH by row, used in place when they come
+		   from the game data pack, so they may be read-only */
+		unsigned char*           tiles; ///< Indexes the tile set
+		unsigned char*           events; ///< Event types
+		std::vector<unsigned short> takenEvents; ///< Grid elements whose events were collected, in order
 		char                     mask[60][64]; ///< Tile masks (at most 60 tiles, all with 8 * 8 masks)
 		fixed                    direction; ///< Player's direction
 
@@ -82,7 +80,10 @@ class JJ1BonusLevel : public Level {
 		int  loadSprites ();
 		int  loadTiles   (char* fileName);
 		bool isEvent     (fixed x, fixed y);
+		unsigned char getEvent (int gridX, int gridY);
+		void clearEvent  (int gridX, int gridY);
 		int  step        ();
+		void drawGround  (fixed playerX, fixed playerY, fixed playerSin, fixed playerCos);
 		void draw        ();
 
 	public:
