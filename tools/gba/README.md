@@ -65,9 +65,11 @@ menu demos play the same way every run, and it hashes every presented frame.
 
 This runs both builds for 12000 frames and lists the frames that differ. Both
 builds must show the same version string, because the menu draws it. For
-example, define `OJ_VERSION_GIT` in one build's `src/version.cpp`. Frames 96,
-3400 and 11178 can differ even between two runs of the same build, and others
-now and then, more so when several runs share the CPU.
+example, define `OJ_VERSION_GIT` in one build's `src/version.cpp`. The shim runs the
+game without audio, since the audio thread runs in real time. Builds from
+before the palette alpha fix (see `Video::opaqueColors`) still show the odd
+frame that differs from run to run, on screen transitions such as frames 3400
+and 11178.
 
 To reach other parts of the game, run the shim directly. `DET_KEYS` presses
 keys (SDL keycodes, in decimal) at given frames, for a given number of frames.

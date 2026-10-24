@@ -93,6 +93,9 @@ class Video {
 		SDL_Surface* createSurface       (const unsigned char* pixels, int width, int height, bool writable = false);
 		void         destroySurface      (SDL_Surface *surface);
 		void         setSurfacePalette   (SDL_Surface *surface, SDL_Color *palette, int start, int length);
+#if OJ_SDL3 || OJ_SDL2
+		static SDL_Color* opaqueColors   (const SDL_Color* palette, int length, SDL_Color* opaque);
+#endif
 		void         restoreSurfacePalette (SDL_Surface *surface);
 		void         enableColorKey      (SDL_Surface *surface, unsigned int index);
 		unsigned int getColorKey         (SDL_Surface *surface);

@@ -32,6 +32,15 @@ Uint64 SDL_GetTicks64 (void) { return fakeTicks(); }
 void SDL_Delay (Uint32 ms) { if (!mainThread()) usleep(ms * 1000); }
 time_t time (time_t* t) { time_t v = 1700000000; if (t) *t = v; return v; }
 
+/* The audio thread runs in real time, so the game would see sounds finish at
+   different frames on each run. Without a device the game runs silent. */
+SDL_AudioDeviceID SDL_OpenAudioDevice (const char* device, int iscapture, const SDL_AudioSpec* desired,
+	SDL_AudioSpec* obtained, int allowed_changes) {
+	(void)device; (void)iscapture; (void)desired; (void)obtained; (void)allowed_changes;
+	SDL_SetError("detshim: no audio");
+	return 0;
+}
+
 /// Next key event due from DET_KEYS at the current frame, if any
 static int injectKey (SDL_Event* event) {
 	static int pressed[64], done[64];

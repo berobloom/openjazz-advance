@@ -586,7 +586,8 @@ void Video::changePalette (SDL_Color *palette, unsigned char first, unsigned int
 #if OJ_SDL3 || OJ_SDL2
 	setSurfacePalette(screen, palette, first, amount);
 	#if OJ_SDL3
-	if(!SDL_SetPaletteColors(texturePalette, palette, first, amount)) {
+	SDL_Color opaque[MAX_PALETTE_COLORS];
+	if(!SDL_SetPaletteColors(texturePalette, opaqueColors(palette, amount, opaque), first, amount)) {
 		LOG_WARN("Could not set texture palette colors: %s", SDL_GetError());
 	}
 	#endif
@@ -986,6 +987,31 @@ unsigned int Video::getColorKey (SDL_Surface* surface) {
 
 }
 
+#if OJ_SDL3 || OJ_SDL2
+/**
+ * Copy palette colours with their alpha set. Palettes are built without it,
+ * but SDL compares it when it maps a colour to a palette index, so the index
+ * picked for, say, black would depend on whatever memory held.
+ *
+ * @param palette Colours to copy
+ * @param length Number of colours, at most MAX_PALETTE_COLORS
+ * @param opaque Room for the copy
+ *
+ * @return The copy
+ */
+SDL_Color* Video::opaqueColors (const SDL_Color* palette, int length, SDL_Color* opaque) {
+
+	for (int i = 0; i < length; i++) {
+		opaque[i] = palette[i];
+		opaque[i].a = SDL_ALPHA_OPAQUE;
+	}
+
+	return opaque;
+
+}
+#endif
+
+
 /**
  * Sets the palette colors of provided surface.
  *
@@ -995,6 +1021,11 @@ unsigned int Video::getColorKey (SDL_Surface* surface) {
  * @param length number of colors to copy
  */
 void Video::setSurfacePalette (SDL_Surface* surface, SDL_Color *palette, int start, int length) {
+#if OJ_SDL3 || OJ_SDL2
+	SDL_Color opaque[MAX_PALETTE_COLORS];
+	palette = opaqueColors(palette, length, opaque);
+#endif
+
 #if OJ_SDL3
 	SDL_Palette *surfacePalette = SDL_GetSurfacePalette(surface);
 	if(!surfacePalette) {
