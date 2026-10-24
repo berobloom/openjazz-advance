@@ -123,9 +123,9 @@ namespace gbaLevel {
 	void sprite (const unsigned char* pixels, int pitch, int w, int h, int x, int y,
 		int key, const unsigned char* remap, unsigned int remapHash);
 
-	/// Draw on the overlay; the area is already clipped to it
+	/// Draw on the overlay; the area is already clipped to it. remapHash identifies remap's contents
 	void overlayBlit (const unsigned char* pixels, int pitch, int x, int y, int w, int h,
-		int key, const unsigned char* remap);
+		int key, const unsigned char* remap, unsigned int remapHash);
 
 	/// Fill part of the overlay; the area is already clipped to it
 	void overlayFill (int x, int y, int w, int h, int color);

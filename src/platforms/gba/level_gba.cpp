@@ -34,6 +34,7 @@
 #include <gba_systemcalls.h>
 #include <gba_video.h>
 
+#include <algorithm>
 #include <stdlib.h>
 #include <string.h>
 
@@ -54,6 +55,8 @@ namespace {
 	const int OBJ_UNITS = 512; ///< 8bpp sprite tiles in sprite VRAM
 	const int OBJ_ENTRIES = 48; ///< Sprite images kept in sprite VRAM
 	const int OBJ_PIECES = 12; ///< Most hardware sprites per image
+	const int OVERLAY_OPS = 96; ///< Overlay drawing recorded per frame
+	const int OVERLAY_REMAPS = 3; ///< Colour remaps recorded per frame
 
 	u32* const bgTiles = reinterpret_cast<u32*>(VRAM);
 	u32* const objTiles = reinterpret_cast<u32*>(VRAM + 0x10000);
@@ -69,6 +72,15 @@ namespace {
 		short x, y; ///< Offset in the image
 		unsigned char shape, size; ///< Hardware sprite shape and size
 		unsigned short tile; ///< First 8bpp tile, from the image's first
+	};
+
+	/// Drawing on the overlay, recorded to be done at commit
+	struct OverlayOp {
+		const unsigned char* pixels; ///< First source pixel, or nullptr for a fill
+		short pitch;
+		short key; ///< Transparent source value, or -1; for a fill, the colour
+		unsigned char x, y, w, h;
+		signed char remap; ///< Recorded remap, or -1
 	};
 
 	struct ObjEntry {
@@ -95,6 +107,7 @@ namespace {
 		unsigned short* slotRefs; ///< Map entries using each slot
 		unsigned int* slotReleased; ///< Frame in which each slot was last released
 		int clock; ///< Where the search for a free slot continues
+		unsigned int slotsGone; ///< Frame in which no slot was free
 
 		unsigned short map[3][32 * 32]; ///< Shadows of BG0, BG1 and BG2
 		bool mapDirty[3];
@@ -109,7 +122,20 @@ namespace {
 		} cells[8][16];
 
 		unsigned short overlaySlots[HUD_TOP * 32]; ///< Overlay slot of each cell, or NONE
-		int overlayUsed;
+
+		/* Drawing on the overlay is recorded, then done at commit in only the
+		   cells it changes, so that text shown again keeps its slots */
+		OverlayOp overlayOps[OVERLAY_OPS];
+		int overlayOpCount;
+		unsigned char overlayRemaps[OVERLAY_REMAPS][256];
+		unsigned int overlayRemapHashes[OVERLAY_REMAPS];
+		int overlayRemapCount;
+		bool overlayDirect; ///< Too much to record: drawing as it comes until the frame ends
+		bool overlayHashesValid; ///< Whether overlayHashes describe the cells shown
+		bool overlayShown; ///< Whether any overlay cell is shown
+		unsigned int overlayHashes[2][HUD_TOP * 32]; ///< What drew each cell, 0 for nothing, this frame and last
+		int overlayHashesShown; ///< Which of overlayHashes describes the cells shown
+		u32 overlayKeep[HUD_TOP]; ///< Cells left as shown, one bit per column
 
 		unsigned char* hud; ///< The 320x33 panel, scaled to the 240x26 shown, like the video surface
 		int hudValues[16];
@@ -216,6 +242,9 @@ namespace {
 
 	/// A slot to reuse, or -1 if all are in use
 	OJ_FAST_CODE int freeSlot () {
+		// Slots released this frame stay unusable, so once none is free, none will be
+		if (state->slotsGone == state->frame) return -1;
+
 		for (int i = 0; i < SLOTS; i++) {
 			int s = state->clock;
 			state->clock = (s + 1 < SLOTS)? s + 1: 2;
@@ -230,6 +259,8 @@ namespace {
 
 			return s;
 		}
+
+		state->slotsGone = state->frame;
 
 		return -1;
 	}
@@ -497,6 +528,8 @@ namespace {
 
 	/// Slot for an overlay cell, allocated and cleared the first time this frame
 	inline int overlaySlot (int column, int row) {
+		if (state->overlayKeep[row] & (1u << column)) return -1;
+
 		unsigned short& slot = state->overlaySlots[row * 32 + column];
 
 		if (slot == NONE) {
@@ -508,7 +541,6 @@ namespace {
 			slot = s;
 			state->map[0][row * 32 + column] = s;
 			state->mapDirty[0] = true;
-			state->overlayUsed++;
 		}
 
 		return slot;
@@ -693,18 +725,9 @@ void gbaLevel::beginFrame (int viewX, int viewY) {
 	state->sprites = 0;
 	state->spritePriority = 2;
 
-	// Clear the overlay; its slots stay shown until the next VBlank
-	if (state->overlayUsed) {
-		for (int i = 0; i < HUD_TOP * 32; i++) {
-			if (state->overlaySlots[i] != NONE) {
-				releaseOwned(state->overlaySlots[i]);
-				state->overlaySlots[i] = NONE;
-				state->map[0][i] = BLANK;
-			}
-		}
-		state->overlayUsed = 0;
-		state->mapDirty[0] = true;
-	}
+	state->overlayOpCount = 0;
+	state->overlayRemapCount = 0;
+	state->overlayDirect = false;
 
 	state->scrollX = viewX;
 	state->scrollY = viewY;
@@ -938,78 +961,225 @@ void gbaLevel::sprite (const unsigned char* pixels, int pitch, int w, int h, int
 }
 
 
-OJ_FAST_CODE void gbaLevel::overlayBlit (const unsigned char* pixels, int pitch, int x, int y, int w, int h,
-	int key, const unsigned char* remap) {
+namespace {
 
-	if (!state) return;
+	OJ_FAST_CODE void blitCells (const unsigned char* pixels, int pitch, int x, int y, int w, int h,
+		int key, const unsigned char* remap) {
 
-	u32 zero = state->zero;
+		u32 zero = state->zero;
 
-	for (int row = 0; row < h; row++) {
-		const unsigned char* src = pixels + row * pitch;
+		for (int row = 0; row < h; row++) {
+			const unsigned char* src = pixels + row * pitch;
 
-		// One cell row at a time, as VRAM takes no single bytes
-		for (int col = 0; col < w;) {
-			int sx = x + col;
-			int end = col + 8 - (sx & 7);
-			if (end > w) end = w;
+			// One cell row at a time, as VRAM takes no single bytes
+			for (int col = 0; col < w;) {
+				int sx = x + col;
+				int end = col + 8 - (sx & 7);
+				if (end > w) end = w;
 
-			u32* dst = overlayRow(sx, y + row);
-			if (dst && !remap && end - col == 8) {
-				// A whole cell row, four pixels at a time
-				u32 pixels[2];
-				loadEight(src + col, pixels[0], pixels[1]);
-				for (int i = 0; i < 2; i++) {
-					u32 v = pixels[i];
-					u32 keep = (key >= 0)? equalBytes(v, key * 0x01010101): 0;
-					u32 zeros = equalBytes(v, 0);
-					v = (v & ~zeros) | (zero * 0x01010101 & zeros);
-					dst[i] = (dst[i] & keep) | (v & ~keep);
+				u32* dst = overlayRow(sx, y + row);
+				if (dst && !remap && end - col == 8) {
+					// A whole cell row, four pixels at a time
+					u32 pixels[2];
+					loadEight(src + col, pixels[0], pixels[1]);
+					for (int i = 0; i < 2; i++) {
+						u32 v = pixels[i];
+						u32 keep = (key >= 0)? equalBytes(v, key * 0x01010101): 0;
+						u32 zeros = equalBytes(v, 0);
+						v = (v & ~zeros) | (zero * 0x01010101 & zeros);
+						dst[i] = (dst[i] & keep) | (v & ~keep);
+					}
+				} else if (dst) {
+					u32 words[2] = {dst[0], dst[1]};
+					for (; col < end; col++, sx++) {
+						u32 p = src[col];
+						if (static_cast<int>(p) == key) continue;
+						if (remap) p = remap[p];
+						putByte(words, sx, p? p: zero);
+					}
+					dst[0] = words[0];
+					dst[1] = words[1];
 				}
-			} else if (dst) {
-				u32 words[2] = {dst[0], dst[1]};
-				for (; col < end; col++, sx++) {
-					u32 p = src[col];
-					if (static_cast<int>(p) == key) continue;
-					if (remap) p = remap[p];
-					putByte(words, sx, p? p: zero);
-				}
-				dst[0] = words[0];
-				dst[1] = words[1];
+
+				col = end;
 			}
-
-			col = end;
 		}
 	}
+
+	OJ_FAST_CODE void fillCells (int x, int y, int w, int h, int color) {
+		u32 p = color? color: state->zero;
+
+		for (int row = y; row < y + h; row++) {
+			for (int col = x; col < x + w;) {
+				int end = (col | 7) + 1;
+				if (end > x + w) end = x + w;
+
+				u32* dst = overlayRow(col, row);
+				if (dst) {
+					u32 words[2] = {dst[0], dst[1]};
+					for (; col < end; col++) putByte(words, col, p);
+					dst[0] = words[0];
+					dst[1] = words[1];
+				}
+
+				col = end;
+			}
+		}
+	}
+
+	/// Do recorded drawing, skipping the cell rows it leaves as shown
+	void drawOverlayOp (const OverlayOp& op) {
+		int first = op.x >> 3;
+		int last = (op.x + op.w - 1) >> 3;
+		u32 columns = ((2u << last) - 1) & ~((1u << first) - 1);
+		const unsigned char* remap = (op.remap >= 0)? state->overlayRemaps[op.remap]: nullptr;
+
+		for (int y = op.y; y < op.y + op.h;) {
+			int end = std::min((y | 7) + 1, op.y + op.h);
+
+			if ((state->overlayKeep[y >> 3] & columns) != columns) {
+				if (op.pixels) blitCells(op.pixels + (y - op.y) * op.pitch, op.pitch, op.x, y, op.w, end - y, op.key, remap);
+				else fillCells(op.x, y, op.w, end - y, op.key);
+			}
+
+			y = end;
+		}
+	}
+
+	/**
+	 * Draw the recorded overlay, in the cells that it changes.
+	 *
+	 * @param all Whether to draw every cell, for drawing that goes on unrecorded
+	 */
+	OJ_FAST_CODE void resolveOverlay (bool all) {
+		// Nothing drawn, and nothing to take away
+		if (!state->overlayOpCount && !state->overlayShown && state->overlayHashesValid) return;
+
+		unsigned int* hashes = state->overlayHashes[state->overlayHashesShown ^ 1];
+		const unsigned int* shown = state->overlayHashes[state->overlayHashesShown];
+		memset(hashes, 0, sizeof(state->overlayHashes[0]));
+
+		// Sum up what draws each cell: the part of each source and where it goes
+		for (int i = 0; i < state->overlayOpCount; i++) {
+			const OverlayOp& op = state->overlayOps[i];
+			unsigned int remapHash = (op.remap >= 0)? state->overlayRemapHashes[op.remap]: 0;
+
+			for (int row = op.y >> 3; row <= (op.y + op.h - 1) >> 3; row++) {
+				int top = std::max<int>(op.y, row << 3);
+				int bottom = std::min<int>(op.y + op.h, (row + 1) << 3);
+
+				for (int column = op.x >> 3; column <= (op.x + op.w - 1) >> 3; column++) {
+					int left = std::max<int>(op.x, column << 3);
+					int right = std::min<int>(op.x + op.w, (column + 1) << 3);
+
+					unsigned int source = op.pixels?
+						reinterpret_cast<uintptr_t>(op.pixels + (top - op.y) * op.pitch + (left - op.x)): 0;
+					unsigned int place = (left & 7) | ((top & 7) << 3) | ((right - left) << 6) |
+						((bottom - top) << 10) | ((op.key & 0xFFFF) << 16);
+
+					unsigned int& hash = hashes[(row << 5) + column];
+					hash = ((hash * 0x9E3779B1) ^ source) * 0x85EBCA6B;
+					hash = ((hash ^ place) * 0xC2B2AE35) ^ (op.pitch + remapHash);
+					if (!hash) hash = 1;
+				}
+			}
+		}
+
+		// Cells drawn the same as last frame keep their slots; the rest start again
+		all = all || !state->overlayHashesValid;
+		for (int row = 0; row < HUD_TOP; row++) {
+			u32 keep = 0;
+
+			for (int column = 0; column < 32; column++) {
+				int i = (row << 5) + column;
+
+				if (!all && hashes[i] == shown[i]) {
+					keep |= 1u << column;
+				} else if (state->overlaySlots[i] != NONE) {
+					releaseOwned(state->overlaySlots[i]);
+					state->overlaySlots[i] = NONE;
+					state->map[0][i] = BLANK;
+					state->mapDirty[0] = true;
+				}
+			}
+
+			state->overlayKeep[row] = keep;
+		}
+
+		for (int i = 0; i < state->overlayOpCount; i++) drawOverlayOp(state->overlayOps[i]);
+
+		state->overlayShown = state->overlayOpCount;
+
+		memset(state->overlayKeep, 0, sizeof(state->overlayKeep));
+		state->overlayOpCount = 0;
+		state->overlayRemapCount = 0;
+		state->overlayHashesShown ^= 1;
+		state->overlayHashesValid = true;
+	}
+
+	/// Record drawing on the overlay, or draw it if the recording is full
+	void addOverlayOp (const OverlayOp& op, const unsigned char* remap, unsigned int remapHash) {
+		if (!state->overlayDirect) {
+			OverlayOp recorded = op;
+			recorded.remap = -1;
+
+			// The remap table may change before commit, so record its contents
+			if (remap) {
+				for (int i = 0; i < state->overlayRemapCount; i++) {
+					if (state->overlayRemapHashes[i] == remapHash) recorded.remap = i;
+				}
+				if (recorded.remap < 0 && state->overlayRemapCount < OVERLAY_REMAPS) {
+					recorded.remap = state->overlayRemapCount++;
+					memcpy(state->overlayRemaps[recorded.remap], remap, 256);
+					state->overlayRemapHashes[recorded.remap] = remapHash;
+				}
+			}
+
+			if (state->overlayOpCount < OVERLAY_OPS && (!remap || recorded.remap >= 0)) {
+				state->overlayOps[state->overlayOpCount++] = recorded;
+				return;
+			}
+
+			// Draw what was recorded, and from now on draw as it comes
+			resolveOverlay(true);
+			state->overlayDirect = true;
+			state->overlayHashesValid = false;
+			state->overlayShown = true;
+		}
+
+		if (op.pixels) blitCells(op.pixels, op.pitch, op.x, op.y, op.w, op.h, op.key, remap);
+		else fillCells(op.x, op.y, op.w, op.h, op.key);
+	}
+
 }
 
 
-OJ_FAST_CODE void gbaLevel::overlayFill (int x, int y, int w, int h, int color) {
-	if (!state) return;
+void gbaLevel::overlayBlit (const unsigned char* pixels, int pitch, int x, int y, int w, int h,
+	int key, const unsigned char* remap, unsigned int remapHash) {
 
-	u32 p = color? color: state->zero;
+	if (!state || w <= 0 || h <= 0) return;
 
-	for (int row = y; row < y + h; row++) {
-		for (int col = x; col < x + w;) {
-			int end = (col | 7) + 1;
-			if (end > x + w) end = x + w;
+	OverlayOp op = {pixels, static_cast<short>(pitch), static_cast<short>(key),
+		static_cast<unsigned char>(x), static_cast<unsigned char>(y),
+		static_cast<unsigned char>(w), static_cast<unsigned char>(h), -1};
+	addOverlayOp(op, remap, remapHash);
+}
 
-			u32* dst = overlayRow(col, row);
-			if (dst) {
-				u32 words[2] = {dst[0], dst[1]};
-				for (; col < end; col++) putByte(words, col, p);
-				dst[0] = words[0];
-				dst[1] = words[1];
-			}
 
-			col = end;
-		}
-	}
+void gbaLevel::overlayFill (int x, int y, int w, int h, int color) {
+	if (!state || w <= 0 || h <= 0) return;
+
+	OverlayOp op = {nullptr, 0, static_cast<short>(color),
+		static_cast<unsigned char>(x), static_cast<unsigned char>(y),
+		static_cast<unsigned char>(w), static_cast<unsigned char>(h), -1};
+	addOverlayOp(op, nullptr, 0);
 }
 
 
 OJ_FAST_CODE void gbaLevel::commit (const unsigned short* palette) {
 	if (!state) return;
+
+	if (!state->overlayDirect) resolveOverlay(false);
 
 	// Sprites drawn later go in front, which the hardware gives lower numbers
 	int sprites = state->sprites;

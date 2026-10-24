@@ -537,7 +537,7 @@ int SDL_BlitSurface (SDL_Surface* src, SDL_Rect* srcrect, SDL_Surface* dst, SDL_
 	sp += (c.y - d.y) * src->pitch + (c.x - d.x);
 
 	if (dst->kind == SDL_GBA_OVERLAY) {
-		gbaLevel::overlayBlit(sp, src->pitch, c.x, c.y, c.w, c.h, key, src->remap);
+		gbaLevel::overlayBlit(sp, src->pitch, c.x, c.y, c.w, c.h, key, src->remap, src->remapHash);
 	} else if (isScaled(dst)) {
 		gbaBlitScaled(sp, src->pitch, static_cast<Uint8*>(dst->pixels), dst->pitch,
 			c.x, c.y, c.w, c.h, key, src->remap);

@@ -982,24 +982,31 @@ int JJ1Level::play () {
 
 			}
 
-			// Display statistics & bonuses
+			// Display statistics & bonuses, kept inside canvases smaller than 320x200
+			int labelX = std::max((canvasW >> 1) - 152, 8);
+			int numberX = std::min((canvasW >> 1) + 124, canvasW - 24);
+			int lineY = (canvasH >> 1) - 60;
+			int lineH = 20;
 
-			font->showString("time", (canvasW >> 1) - 152, (canvasH >> 1) - 60);
-			font->showNumber(timeBonus, (canvasW >> 1) + 124, (canvasH >> 1) - 60);
+			// Above the panel of a 160-line canvas
+			if (canvasH < SH) lineY = 10;
 
-			font->showString("enemies", (canvasW >> 1) - 152, (canvasH >> 1) - 40);
-			font->showNumber(enemyPercent, (canvasW >> 1) + 124, (canvasH >> 1) - 40);
-			font->showString("%", (canvasW >> 1) + 124, (canvasH >> 1) - 40);
+			font->showString("time", labelX, lineY);
+			font->showNumber(timeBonus, numberX, lineY);
 
-			font->showString("items", (canvasW >> 1) - 152, (canvasH >> 1) - 20);
-			font->showNumber(itemPercent, (canvasW >> 1) + 124, (canvasH >> 1) - 20);
-			font->showString("%", (canvasW >> 1) + 124, (canvasH >> 1) - 20);
+			font->showString("enemies", labelX, lineY + lineH);
+			font->showNumber(enemyPercent, numberX, lineY + lineH);
+			font->showString("%", numberX, lineY + lineH);
 
-			font->showString("perfect", (canvasW >> 1) - 152, canvasH >> 1);
-			font->showNumber(perfect, (canvasW >> 1) + 124, canvasH >> 1);
+			font->showString("items", labelX, lineY + (lineH * 2));
+			font->showNumber(itemPercent, numberX, lineY + (lineH * 2));
+			font->showString("%", numberX, lineY + (lineH * 2));
 
-			font->showString("score", (canvasW >> 1) - 152, (canvasH >> 1) + 40);
-			font->showNumber(localPlayer->getScore(), (canvasW >> 1) + 124, (canvasH >> 1) + 40);
+			font->showString("perfect", labelX, lineY + (lineH * 3));
+			font->showNumber(perfect, numberX, lineY + (lineH * 3));
+
+			font->showString("score", labelX, lineY + (lineH * 5));
+			font->showNumber(localPlayer->getScore(), numberX, lineY + (lineH * 5));
 
 		}
 
