@@ -64,4 +64,23 @@ void gbaBlitScaled (const uint8_t* src, int srcPitch, uint8_t* dst, int dstPitch
  */
 void gbaFill (uint8_t* dst, int pitch, int w, int h, uint8_t color);
 
+/**
+ * Copy words with the CPU. Unlike DMA, this lets interrupts in, so it does not
+ * delay Maxmod's VBlank handler.
+ *
+ * @param src Source, word-aligned
+ * @param dst Destination, word-aligned
+ * @param words Number of words, a multiple of 8
+ */
+void gbaCopyWords (const void* src, void* dst, int words);
+
+/**
+ * Fill words with the CPU, letting interrupts in (see gbaCopyWords).
+ *
+ * @param dst Destination, word-aligned
+ * @param value Word to store
+ * @param words Number of words, a multiple of 8
+ */
+void gbaFillWords (void* dst, uint32_t value, int words);
+
 #endif

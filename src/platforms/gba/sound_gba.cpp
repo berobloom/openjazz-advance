@@ -40,9 +40,15 @@ namespace {
 	const int MIX_CHANNELS = 14; ///< Leaves 6 for sound effects
 	const int SOUND_RATE = 11025; ///< Rate of the sound effects in the soundbank
 
+	/* Mixing at 16 kHz left images of the sound between 8 and 16 kHz, heard as
+	   static. 27 kHz takes 10% of the CPU in the menu, against 6% at 16 kHz.
+	   (31 kHz needs another 320 bytes of IWRAM, which the stack can't spare.) */
+	const mm_mixmode MIX_MODE = MM_MIX_27KHZ;
+	const int MIX_LENGTH = MM_MIXLEN_27KHZ;
+
 	// Maxmod's buffers. Only the mixing buffer is used heavily enough to need IWRAM.
-	u8 mixMemory[MM_MIXLEN_16KHZ] __attribute__((aligned(4)));
-	OJ_SLOW_DATA u8 waveMemory[MM_MIXLEN_16KHZ] __attribute__((aligned(4)));
+	u8 mixMemory[MIX_LENGTH] __attribute__((aligned(4)));
+	OJ_SLOW_DATA u8 waveMemory[MIX_LENGTH] __attribute__((aligned(4)));
 	OJ_SLOW_DATA u8 modChannels[MOD_CHANNELS * MM_SIZEOF_MODCH] __attribute__((aligned(4)));
 	OJ_SLOW_DATA u8 activeChannels[MIX_CHANNELS * MM_SIZEOF_ACTCH] __attribute__((aligned(4)));
 	OJ_SLOW_DATA u8 mixChannels[MIX_CHANNELS * MM_SIZEOF_MIXCH] __attribute__((aligned(4)));
@@ -151,7 +157,7 @@ void openAudio () {
 	// Maxmod reads the mixing mode as a word, but the enum is one byte
 	mm_gba_system setup;
 	memset(&setup, 0, sizeof(setup));
-	setup.mixing_mode = MM_MIX_16KHZ;
+	setup.mixing_mode = MIX_MODE;
 	setup.mod_channel_count = MOD_CHANNELS;
 	setup.mix_channel_count = MIX_CHANNELS;
 	setup.module_channels = modChannels;

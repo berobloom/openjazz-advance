@@ -19,6 +19,8 @@
 
 #include "blit_gba.h"
 
+#include <cstring>
+
 namespace {
 
 	template <bool KEYED, bool REMAP>
@@ -371,5 +373,53 @@ void gbaFill (uint8_t* dst, int pitch, int w, int h, uint8_t color) {
 
 		dst += pitch;
 	}
+
+}
+
+
+void gbaCopyWords (const void* src, void* dst, int words) {
+
+#ifdef __arm__
+	// Eight words per burst, as fast as DMA from EWRAM
+	asm volatile (
+		"1:\n"
+		"ldmia %0!, {r3-r10}\n"
+		"stmia %1!, {r3-r10}\n"
+		"subs %2, %2, #8\n"
+		"bgt 1b\n"
+		: "+r" (src), "+r" (dst), "+r" (words)
+		:
+		: "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "cc", "memory");
+#else
+	// For the blit tests on the PC
+	memcpy(dst, src, words * 4);
+#endif
+
+}
+
+
+void gbaFillWords (void* dst, uint32_t value, int words) {
+
+#ifdef __arm__
+	asm volatile (
+		"mov r3, %2\n"
+		"mov r4, %2\n"
+		"mov r5, %2\n"
+		"mov r6, %2\n"
+		"mov r7, %2\n"
+		"mov r8, %2\n"
+		"mov r9, %2\n"
+		"mov r10, %2\n"
+		"1:\n"
+		"stmia %0!, {r3-r10}\n"
+		"subs %1, %1, #8\n"
+		"bgt 1b\n"
+		: "+r" (dst), "+r" (words)
+		: "r" (value)
+		: "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "cc", "memory");
+#else
+	uint32_t* word = static_cast<uint32_t*>(dst);
+	for (int i = 0; i < words; i++) word[i] = value;
+#endif
 
 }

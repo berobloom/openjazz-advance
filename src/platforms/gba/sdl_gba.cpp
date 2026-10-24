@@ -322,7 +322,7 @@ int SDL_Flip (SDL_Surface* surface) {
 		gbaLevel::commit(hwPalette);
 	} else {
 		u16* page = reinterpret_cast<u16*>((REG_DISPCNT & BACKBUFFER)? VRAM: VRAM + 0xA000);
-		DMA3COPY(screen->pixels, page, DMA32 | (SCREEN_W * SCREEN_H / 4));
+		gbaCopyWords(screen->pixels, page, SCREEN_W * SCREEN_H / 4);
 	}
 
 	if (hwPaletteDirty) {

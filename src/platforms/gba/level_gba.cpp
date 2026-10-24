@@ -23,6 +23,7 @@
 
 
 #include "level_gba.h"
+#include "blit_gba.h"
 
 #include "io/gfx/video.h"
 #include "io/log.h"
@@ -653,7 +654,7 @@ void gbaLevel::enter (SDL_Surface* tileSet, int tiles, int key, int black) {
 
 	// Blank the display while VRAM is set up
 	REG_DISPCNT = LCDC_OFF;
-	DMA3COPY(state->map[0], VRAM, DMA32 | DMA_SRC_FIXED | (0x18000 / 4));
+	gbaFillWords(reinterpret_cast<void*>(VRAM), state->map[0][0] | (state->map[0][1] << 16), 0x18000 / 4);
 	u32 blackWord = black * 0x01010101;
 	for (int i = 0; i < 16; i++) bgTiles[(BLACK << 4) + i] = blackWord;
 
@@ -683,7 +684,7 @@ void gbaLevel::leave () {
 
 	REG_DISPCNT = LCDC_OFF;
 	REG_DMA0CNT = 0;
-	DMA3COPY(state->map[0], VRAM, DMA32 | DMA_SRC_FIXED | (0x14000 / 4));
+	gbaFillWords(reinterpret_cast<void*>(VRAM), state->map[0][0] | (state->map[0][1] << 16), 0x14000 / 4);
 
 	if (state->oldCanvas) {
 		canvas = state->oldCanvas;
