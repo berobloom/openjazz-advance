@@ -148,6 +148,6 @@ class Controls {
 
 // Variable
 
-EXTERN Controls controls;
+EXTERN Controls controls OJ_SLOW_DATA;
 
 #endif

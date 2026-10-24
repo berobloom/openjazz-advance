@@ -36,12 +36,32 @@ void gbaBlit (const uint8_t* src, int srcPitch, uint8_t* dst, int dstPitch,
 	int w, int h, int key, const uint8_t* remap);
 
 /**
- * Scale a 320x200 frame to the 240x160 screen, keeping three of every four
- * columns and four of every five rows.
+ * Copy a block of 8-bit pixels to a scaled surface, which keeps only columns
+ * 0, 1 and 3 of every four and rows 0, 1, 3 and 4 of every five.
  *
- * @param src 320x200 8-bit pixels, word aligned
- * @param dst Mode 4 frame buffer page
+ * @param src Source pixel for the block's first column and row
+ * @param srcPitch Source bytes per row
+ * @param dst First pixel of the scaled surface
+ * @param dstPitch Scaled surface bytes per row
+ * @param x Block's first column, in full-size coordinates
+ * @param y Block's first row, in full-size coordinates
+ * @param w Block width, in full-size pixels
+ * @param h Block height, in full-size pixels
+ * @param key Source value to skip, or -1 to copy every pixel
+ * @param remap Table applied to copied pixels, or nullptr
  */
-void gbaScaleFrame (const uint8_t* src, uint16_t* dst);
+void gbaBlitScaled (const uint8_t* src, int srcPitch, uint8_t* dst, int dstPitch,
+	int x, int y, int w, int h, int key, const uint8_t* remap);
+
+/**
+ * Fill a block of 8-bit pixels.
+ *
+ * @param dst First pixel
+ * @param pitch Bytes per row
+ * @param w Pixels per row
+ * @param h Rows
+ * @param color Pixel value
+ */
+void gbaFill (uint8_t* dst, int pitch, int w, int h, uint8_t color);
 
 #endif

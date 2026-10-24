@@ -14,9 +14,13 @@
  *
  * The video surface is an 8-bit buffer in EWRAM, copied to the hidden Mode 4
  * page at each flip. Byte writes do not work in VRAM, so the engine cannot
- * draw there directly. A 320x200 video surface is scaled down to the screen,
- * so screens laid out for 320x200 fit. The pages swap at the next VBlank,
- * together with the palette as it was at the flip.
+ * draw there directly. The pages swap at the next VBlank, together with the
+ * palette as it was at the flip.
+ *
+ * Screens laid out for 320x200 fit through a 320x200 video surface that keeps
+ * only the pixels that reach the 240x160 screen (see OJ_SCALED_CANVAS in
+ * platforms/gba.h). Blits and fills write just those, which costs less than
+ * drawing everything and scaling it down.
  *
  */
 
@@ -50,7 +54,7 @@
 namespace {
 
 	SDL_Surface* screen = nullptr;
-	SDL_Color physPalette[256]; ///< Physical palette as given, for SDL_MapRGB
+	EWRAM_BSS SDL_Color physPalette[256]; ///< Physical palette as given, for SDL_MapRGB
 	u16 hwPalette[256]; ///< Physical palette in BGR555
 	bool hwPaletteDirty = false;
 
@@ -165,6 +169,11 @@ namespace {
 		return s;
 	}
 
+	/// Whether the surface keeps only some of its pixels, as a 320x200 video surface does
+	bool isScaled (const SDL_Surface* s) {
+		return s->w > s->pitch;
+	}
+
 }
 
 
@@ -234,9 +243,17 @@ SDL_Surface* SDL_SetVideoMode (int width, int height, int bpp, Uint32 flags) {
 	}
 
 	if (!screen) {
-		screen = newSurface(width, height, nullptr, width);
-		if (!screen) return nullptr;
-		memset(screen->pixels, 0, width * height);
+		// Only the stored pixels take memory
+		void* pixels = calloc(SCREEN_W * SCREEN_H, 1);
+		if (!pixels) {
+			lastError = "Out of memory";
+			return nullptr;
+		}
+		screen = newSurface(width, height, pixels, SCREEN_W);
+		if (!screen) {
+			free(pixels);
+			return nullptr;
+		}
 	}
 
 	SetMode(MODE_4 | BG2_ON);
@@ -264,11 +281,7 @@ int SDL_Flip (SDL_Surface* surface) {
 
 	u16* page = reinterpret_cast<u16*>((REG_DISPCNT & BACKBUFFER)? VRAM: VRAM + 0xA000);
 
-	if (screen->w == SCALED_W) {
-		gbaScaleFrame(static_cast<const u8*>(screen->pixels), page);
-	} else {
-		DMA3COPY(screen->pixels, page, DMA32 | (SCREEN_W * SCREEN_H / 4));
-	}
+	DMA3COPY(screen->pixels, page, DMA32 | (SCREEN_W * SCREEN_H / 4));
 
 	if (hwPaletteDirty) {
 		memcpy(flipPalette, hwPalette, sizeof(flipPalette));
@@ -398,6 +411,11 @@ SDL_bool SDL_SetClipRect (SDL_Surface* surface, const SDL_Rect* rect) {
 }
 
 int SDL_BlitSurface (SDL_Surface* src, SDL_Rect* srcrect, SDL_Surface* dst, SDL_Rect* dstrect) {
+	if (isScaled(src)) {
+		lastError = "Cannot blit from the video surface";
+		return -1;
+	}
+
 	SDL_Rect full = {0, 0, static_cast<Uint16>(src->w), static_cast<Uint16>(src->h)};
 	SDL_Rect s;
 
@@ -433,9 +451,16 @@ int SDL_BlitSurface (SDL_Surface* src, SDL_Rect* srcrect, SDL_Surface* dst, SDL_
 
 	if (dstrect) *dstrect = c;
 
-	gbaBlit(static_cast<const Uint8*>(src->pixels) + s.y * src->pitch + s.x, src->pitch,
-		static_cast<Uint8*>(dst->pixels) + c.y * dst->pitch + c.x, dst->pitch, c.w, c.h,
-		(src->flags & SDL_SRCCOLORKEY)? static_cast<int>(src->format->colorkey & 0xFF): -1, src->remap);
+	const Uint8* sp = static_cast<const Uint8*>(src->pixels) + s.y * src->pitch + s.x;
+	int key = (src->flags & SDL_SRCCOLORKEY)? static_cast<int>(src->format->colorkey & 0xFF): -1;
+
+	if (isScaled(dst)) {
+		gbaBlitScaled(sp, src->pitch, static_cast<Uint8*>(dst->pixels), dst->pitch,
+			c.x, c.y, c.w, c.h, key, src->remap);
+	} else {
+		gbaBlit(sp, src->pitch, static_cast<Uint8*>(dst->pixels) + c.y * dst->pitch + c.x,
+			dst->pitch, c.w, c.h, key, src->remap);
+	}
 
 	return 0;
 }
@@ -453,11 +478,16 @@ int SDL_FillRect (SDL_Surface* dst, SDL_Rect* rect, Uint32 color) {
 		c = dst->clip_rect;
 	}
 
-	Uint8* dp = static_cast<Uint8*>(dst->pixels) + c.y * dst->pitch + c.x;
-	for (int y = 0; y < c.h; y++) {
-		memset(dp, color, c.w);
-		dp += dst->pitch;
+	int x0 = c.x, x1 = c.x + c.w, y0 = c.y, y1 = c.y + c.h;
+	if (isScaled(dst)) {
+		x0 = scaledColumns(x0);
+		x1 = scaledColumns(x1);
+		y0 = scaledRows(y0);
+		y1 = scaledRows(y1);
 	}
+
+	if (x1 > x0 && y1 > y0)
+		gbaFill(static_cast<Uint8*>(dst->pixels) + y0 * dst->pitch + x0, dst->pitch, x1 - x0, y1 - y0, color);
 
 	return 0;
 }

@@ -237,47 +237,54 @@ void Sprite::drawScaled (int x, int y, fixed scale) {
 
 	if (SDL_MUSTLOCK(canvas)) SDL_LockSurface(canvas);
 
+	int firstSrcX, firstDstX, firstSrcY, firstDstY;
+
 	if (y < (fullHeight >> 1)) {
 
-		srcY = (fullHeight >> 1) - y;
-		dstY = 0;
+		firstSrcY = (fullHeight >> 1) - y;
+		firstDstY = 0;
 
 	} else {
 
-		srcY = 0;
-		dstY = y - (fullHeight >> 1);
+		firstSrcY = 0;
+		firstDstY = y - (fullHeight >> 1);
 
 	}
 
-	while (srcY < height) {
+	if (x < (fullWidth >> 1)) {
+
+		firstSrcX = (fullWidth >> 1) - x;
+		firstDstX = 0;
+
+	} else {
+
+		firstSrcX = 0;
+		firstDstX = x - (fullWidth >> 1);
+
+	}
+
+	// Loop over the canvas pixels as stored
+	int firstColumn = canvasColumns(canvas, firstDstX);
+	int endColumn = canvasColumns(canvas, firstDstX + width - firstSrcX);
+	int endRow = canvasRows(canvas, firstDstY + height - firstSrcY);
+
+	for (int row = canvasRows(canvas, firstDstY); row < endRow; row++) {
+
+		dstY = canvasRowOf(canvas, row);
+		srcY = firstSrcY + dstY - firstDstY;
 
 		unsigned char* srcRow = static_cast<unsigned char*>(pixels->pixels) + (pixels->pitch * DIV(srcY, scale));
-		unsigned char* dstRow = static_cast<unsigned char*>(canvas->pixels) + (canvas->pitch * dstY);
+		unsigned char* dstRow = static_cast<unsigned char*>(canvas->pixels) + (canvas->pitch * row);
 
-		if (x < (fullWidth >> 1)) {
+		for (int column = firstColumn; column < endColumn; column++) {
 
-			srcX = (fullWidth >> 1) - x;
-			dstX = 0;
-
-		} else {
-
-			srcX = 0;
-			dstX = x - (fullWidth >> 1);
-
-		}
-
-		while (srcX < width) {
+			dstX = canvasColumnOf(canvas, column);
+			srcX = firstSrcX + dstX - firstDstX;
 
 			unsigned char pixel = srcRow[DIV(srcX, scale)];
-			if (pixel != key) dstRow[dstX] = pixel;
-
-			srcX++;
-			dstX++;
+			if (pixel != key) dstRow[column] = pixel;
 
 		}
-
-		srcY++;
-		dstY++;
 
 	}
 

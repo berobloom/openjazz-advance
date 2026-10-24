@@ -174,6 +174,47 @@ EXTERN SDL_Surface* canvas; ///< Surface used for drawing
 EXTERN int          canvasW; ///< Drawing surface width
 EXTERN int          canvasH; ///< Drawing surface height
 
-EXTERN Video video; ///< Video output
+EXTERN Video video OJ_SLOW_DATA; ///< Video output
+
+
+/* Canvas pixels as stored. Some platforms keep only part of a large canvas
+   (OJ_SCALED_CANVAS). Code that writes canvas pixels directly loops over the
+   stored columns and rows, and maps them to canvas coordinates with these. */
+
+/// Canvas column of the given stored column
+inline int canvasColumnOf (const SDL_Surface* surface, int column) {
+#ifdef OJ_SCALED_CANVAS
+	if (surface->w > surface->pitch) return scaledColumnOf(column);
+#endif
+	OJ_UNUSED(surface);
+	return column;
+}
+
+/// Canvas row of the given stored row
+inline int canvasRowOf (const SDL_Surface* surface, int row) {
+#ifdef OJ_SCALED_CANVAS
+	if (surface->w > surface->pitch) return scaledRowOf(row);
+#endif
+	OJ_UNUSED(surface);
+	return row;
+}
+
+/// Number of stored columns left of the given canvas column
+inline int canvasColumns (const SDL_Surface* surface, int x) {
+#ifdef OJ_SCALED_CANVAS
+	if (surface->w > surface->pitch) return scaledColumns(x);
+#endif
+	OJ_UNUSED(surface);
+	return x;
+}
+
+/// Number of stored rows above the given canvas row
+inline int canvasRows (const SDL_Surface* surface, int y) {
+#ifdef OJ_SCALED_CANVAS
+	if (surface->w > surface->pitch) return scaledRows(y);
+#endif
+	OJ_UNUSED(surface);
+	return y;
+}
 
 #endif

@@ -38,6 +38,14 @@
 	#define EXTERN extern
 #endif
 
+/// Marks a global that can live in slower memory. On the GBA this leaves IWRAM
+/// to the stack and hot code.
+#ifdef __GBA__
+	#define OJ_SLOW_DATA __attribute__((section(".sbss")))
+#else
+	#define OJ_SLOW_DATA
+#endif
+
 #include "types.h"
 
 // Constants

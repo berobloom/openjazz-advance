@@ -192,6 +192,13 @@ int gbaFreeStack () {
 	return reinterpret_cast<char*>(p) - reinterpret_cast<char*>(stackBottom());
 }
 
+extern "C" char __sbss_start__[], __sbss_end__[];
+
+/// Zero the globals kept in EWRAM (OJ_SLOW_DATA) before any constructor uses them
+__attribute__((constructor(101))) static void clearSlowData () {
+	memset(__sbss_start__, 0, __sbss_end__ - __sbss_start__);
+}
+
 GbaPlatform::GbaPlatform() {
 }
 

@@ -27,7 +27,7 @@
 // Variable
 
 /// Trigonometric function look-up table
-EXTERN fixed sinLut[1024];
+EXTERN fixed sinLut[1024] OJ_SLOW_DATA;
 
 
 // Functions

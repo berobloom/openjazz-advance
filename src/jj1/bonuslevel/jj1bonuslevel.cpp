@@ -654,7 +654,13 @@ void JJ1BonusLevel::draw () {
 
 	if (SDL_MUSTLOCK(canvas)) SDL_LockSurface(canvas);
 
-	for (y = 1; y <= (canvasH >> 1) - 15; y++) {
+	// Loop over the canvas rows as stored, from canvasH - 1 up to y = 1
+	int endRow = canvasRows(canvas, canvasH);
+	int endColumn = canvasColumns(canvas, canvasW);
+
+	for (int storedRow = canvasRows(canvas, canvasH - ((canvasH >> 1) - 15)); storedRow < endRow; storedRow++) {
+
+		y = canvasH - canvasRowOf(canvas, storedRow);
 
 		fixed distance = DIV(ITOF(800), ITOF(92) - (ITOF(y * 84) / ((canvasH >> 1) - 16)));
 		fixed sideX = MUL(distance, playerCos);
@@ -662,15 +668,16 @@ void JJ1BonusLevel::draw () {
 		fixed fwdX = playerX + MUL(distance - F16, playerSin) - (sideX >> 1);
 		fixed fwdY = playerY - MUL(distance - F16, playerCos) - (sideY >> 1);
 
-		unsigned char* row = static_cast<unsigned char*>(canvas->pixels) + (canvas->pitch * (canvasH - y));
+		unsigned char* row = static_cast<unsigned char*>(canvas->pixels) + (canvas->pitch * storedRow);
 
-		for (x = 0; x < canvasW; x++) {
+		for (int column = 0; column < endColumn; column++) {
 
+			x = canvasColumnOf(canvas, column);
 			fixed nX = ITOF(x) / canvasW;
 			int levelX = FTOI(fwdX + MUL(nX, sideX));
 			int levelY = FTOI(fwdY + MUL(nX, sideY));
 
-			row[x] = static_cast<unsigned char*>(tileSet->pixels)
+			row[column] = static_cast<unsigned char*>(tileSet->pixels)
 				[(grid[ITOT(levelY) & 255][ITOT(levelX) & 255].tile << 10) +
 					((levelY & 31) * tileSet->pitch) + (levelX & 31)];
 

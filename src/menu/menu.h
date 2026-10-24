@@ -161,7 +161,7 @@ inline int DebugMenu::getPage() const { return page; }
 
 // Variables
 
-EXTERN SDL_Color menuPalette[MAX_PALETTE_COLORS]; /// Palette used by most menu screens
+EXTERN SDL_Color menuPalette[MAX_PALETTE_COLORS] OJ_SLOW_DATA; /// Palette used by most menu screens
 
 #endif
 

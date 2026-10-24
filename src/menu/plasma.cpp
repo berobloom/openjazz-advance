@@ -91,8 +91,9 @@ OJ_FAST_CODE int Plasma::draw(SDL_Surface *overlay, int overlayX, int overlayY){
 
 	SDL_LockSurface(canvas);
 
-	w 		= canvas->w;
-	h 		= canvas->h;
+	// Stored columns and rows, which may be fewer than the canvas has
+	w 		= canvasColumns(canvas, canvas->w);
+	h 		= canvasRows(canvas, canvas->h);
 	pitch 	= canvas->pitch;
 
 	px = static_cast<unsigned char*>(canvas->pixels);
@@ -106,12 +107,9 @@ OJ_FAST_CODE int Plasma::draw(SDL_Surface *overlay, int overlayX, int overlayY){
 		cols = columns.data();
 	}
 
-	int t3 = p2;
-	int t4 = p3;
 	for(x=0;x<w;x++){
-		cols[x] = (fCos(t3*4)<<3)+(fCos(t4*4)<<3);
-		t3 += 3;
-		t4 += 2;
+		int cx = canvasColumnOf(canvas, x);
+		cols[x] = (fCos((p2 + (cx * 3))*4)<<3)+(fCos((p3 + (cx * 2))*4)<<3);
 	}
 
 	// Rows can be written four pixels at a time when they are word aligned
@@ -146,14 +144,13 @@ OJ_FAST_CODE int Plasma::draw(SDL_Surface *overlay, int overlayX, int overlayY){
 		overlayW = overlay->w;
 		overlayH = overlay->h;
 	}
-	bool merge = words && overlayPixels && !(reinterpret_cast<uintptr_t>(overlayPixels) & 3) &&
+	bool merge = words && overlayPixels && w == canvas->w && h == canvas->h && !(reinterpret_cast<uintptr_t>(overlayPixels) & 3) &&
 		!(overlayPitch & 3) && !(overlayW & 3) && !(overlayX & 3) &&
 		overlayX >= 0 && overlayY >= 0 && overlayX + overlayW <= w && overlayY + overlayH <= h;
 
-    int t1 = p0;
-    int t2 = p1;
     for(y=0;y<h;y++){
-		unsigned int colb = (fCos(t1*4)<<3)+(fCos(t2*4)<<3)+(32<<10);
+		int cy = canvasRowOf(canvas, y);
+		unsigned int colb = (fCos((p0 + (cy * 2))*4)<<3)+(fCos((p1 + cy)*4)<<3)+(32<<10);
 		if (words) {
 			uint32_t rowPair = columnPair(colb, colb);
 			const uint32_t *pair = pairs;
@@ -200,8 +197,6 @@ OJ_FAST_CODE int Plasma::draw(SDL_Surface *overlay, int overlayX, int overlayY){
 		}
 		// go to next row
 		px += pitch;
-        t1 += 2;
-        t2 += 1;
 	}
 
 	// Move on one step per T_PLASMA_STEP, so the plasma keeps its speed where
