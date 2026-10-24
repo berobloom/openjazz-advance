@@ -36,6 +36,10 @@
 
 #include <string.h>
 
+#if OJ_DEV_HOOKS
+	#include "dev/devhooks.h"
+#endif
+
 #define DEBUG_CM 0
 #define DEBUG_FF 0
 #define DEBUG_ANIM 0
@@ -326,13 +330,32 @@ void JJ1Scene::loadAni (JJ1SceneAnimation &scene, File *f, int dataIndex) {
 					case E1LAniHeader:
 						{
 							LOG_ANIM("PL 1L Background Type: 0");
-							unsigned char* pixels = new unsigned char[SW* SH];
-							memset(pixels, 0, SW*SH);
-							unsigned char* frameData = f->loadBlock(size);
-							loadCompactedMem(size, frameData, pixels);
-							delete[] frameData;
-							scene.background = video.createSurface(pixels, SW, SH);
-							delete[] pixels;
+
+#if OJ_PACK
+							// Baked backgrounds are used in place
+							int bakedLength = SW * SH;
+							const unsigned char* baked = f->loadBaked(BAKE_SCENE, bakedLength, SCENE_BAKE_BACKGROUND);
+							if (baked) scene.background = video.createSurface(baked, SW, SH);
+							else
+#endif
+							{
+#if OJ_DEV_HOOKS
+								int offset = f->tell();
+								devDecoding(true);
+#endif
+								unsigned char* pixels = new unsigned char[SW* SH];
+								memset(pixels, 0, SW*SH);
+								unsigned char* frameData = f->loadBlock(size);
+								loadCompactedMem(size, frameData, pixels);
+								delete[] frameData;
+#if OJ_DEV_HOOKS
+								devDecoding(false);
+								devDecoded(f->getPath(), offset, offset, f->tell(), BAKE_SCENE,
+									SCENE_BAKE_BACKGROUND, pixels, SW * SH);
+#endif
+								scene.background = video.createSurface(pixels, SW, SH);
+								delete[] pixels;
+							}
 
 							// Use the most recently loaded palette
 							video.setPalette(scenePalette.palette);
@@ -476,9 +499,28 @@ void JJ1Scene::loadData (File *f) {
 
 						if (type >= 5 && type <= 7) {
 							f->seek(-5, false); // account for metadata 2 + 2
-							unsigned char* pixels = unpackRLE(f->loadBlock(dataLen), dataLen, width * height + 4);
-							sceneImage.image = video.createSurface(pixels + 4, width, height);
-							delete[] pixels;
+
+#if OJ_PACK
+							// Baked images are used in place
+							int bakedLength = width * height;
+							const unsigned char* baked = f->loadBaked(BAKE_SCENE, bakedLength, SCENE_BAKE_RLE_IMAGE);
+							if (baked) sceneImage.image = video.createSurface(baked, width, height);
+							else
+#endif
+							{
+#if OJ_DEV_HOOKS
+								int offset = f->tell();
+								devDecoding(true);
+#endif
+								unsigned char* pixels = unpackRLE(f->loadBlock(dataLen), dataLen, width * height + 4);
+#if OJ_DEV_HOOKS
+								devDecoding(false);
+								devDecoded(f->getPath(), offset, offset, f->tell(), BAKE_SCENE,
+									SCENE_BAKE_RLE_IMAGE, pixels + 4, width * height);
+#endif
+								sceneImage.image = video.createSurface(pixels + 4, width, height);
+								delete[] pixels;
+							}
 						} else {
 							sceneImage.image = f->loadSurface(width, height, false);
 						}

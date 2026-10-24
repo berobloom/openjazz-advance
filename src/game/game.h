@@ -82,6 +82,7 @@
 
 class Anim;
 class File;
+struct JJ1LevelEnd;
 
 /// Base class for game handling classes
 class Game {
@@ -90,6 +91,7 @@ class Game {
 		int planetId; ///< ID of last planet approach sequence
 
 		bool isFileType (const char *fileName, const char *type, int typeLength);
+		int  finishLevel (JJ1LevelEnd& end);
 
 	protected:
 		GameMode*      mode; ///< Mode-specific management

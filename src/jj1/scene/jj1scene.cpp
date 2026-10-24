@@ -96,8 +96,6 @@ void JJ1SceneAnimation::addFrame(int frameType, unsigned char* frameData, int fr
 JJ1SceneAnimation::JJ1SceneAnimation (int id) :
 	sceneFrames(nullptr), lastFrame(nullptr), background(nullptr),
 	id(id), frames(0), reverseAnimation(0) {
-
-	scratch = video.createSurface(nullptr, SW, SH);
 }
 
 
@@ -117,7 +115,6 @@ JJ1SceneAnimation::~JJ1SceneAnimation () {
 	}
 
 	video.destroySurface(background);
-	video.destroySurface(scratch);
 }
 
 
@@ -252,6 +249,14 @@ JJ1Scene::JJ1Scene (const char * fileName) {
 
 	loadData(file.get());
 	loadScripts(file.get());
+}
+
+
+/**
+ * Delete the JJ1 cutscene.
+ */
+JJ1Scene::~JJ1Scene () {
+	video.destroySurface(scratch);
 }
 
 
@@ -428,7 +433,8 @@ int JJ1Scene::play () {
 					dst.y = (canvasH - SH) >> 1;
 					frameDelay = 1000 / (pages[sceneIndex].animSpeed >> 8);
 					SDL_BlitSurface(sceneAnimation->background, NULL, canvas, &dst);
-					SDL_BlitSurface(sceneAnimation->background, NULL, sceneAnimation->scratch, NULL);
+					if (!scratch) scratch = video.createSurface(nullptr, SW, SH);
+					SDL_BlitSurface(sceneAnimation->background, NULL, scratch, NULL);
 					currentFrame = sceneAnimation->sceneFrames;
 					SDL_Delay(frameDelay);
 
@@ -437,19 +443,19 @@ int JJ1Scene::play () {
 			} else {
 
 				// Upload pixel data to the surface
-				if (SDL_MUSTLOCK(sceneAnimation->scratch)) SDL_LockSurface(sceneAnimation->scratch);
+				if (SDL_MUSTLOCK(scratch)) SDL_LockSurface(scratch);
 
 				switch (currentFrame->frameType) {
 
 					case ECompactedAniHeader:
 
-						loadCompactedMem(currentFrame->frameSize, currentFrame->frameData, static_cast<unsigned char*>(sceneAnimation->scratch->pixels));
+						loadCompactedMem(currentFrame->frameSize, currentFrame->frameData, static_cast<unsigned char*>(scratch->pixels));
 
 						break;
 
 					case EFullFrameAniHeader:
 
-						loadFullFrameMem(currentFrame->frameSize, currentFrame->frameData, static_cast<unsigned char*>(sceneAnimation->scratch->pixels));
+						loadFullFrameMem(currentFrame->frameSize, currentFrame->frameData, static_cast<unsigned char*>(scratch->pixels));
 
 						break;
 
@@ -461,11 +467,11 @@ int JJ1Scene::play () {
 
 				}
 
-				if (SDL_MUSTLOCK(sceneAnimation->scratch)) SDL_UnlockSurface(sceneAnimation->scratch);
+				if (SDL_MUSTLOCK(scratch)) SDL_UnlockSurface(scratch);
 
 				dst.x = (canvasW - SW) >> 1;
 				dst.y = (canvasH - SH) >> 1;
-				SDL_BlitSurface(sceneAnimation->scratch, NULL, canvas, &dst);
+				SDL_BlitSurface(scratch, NULL, canvas, &dst);
 
 				playSound(currentFrame->soundId);
 

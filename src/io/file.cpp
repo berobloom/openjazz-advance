@@ -619,6 +619,18 @@ const unsigned char* File::loadBaked (BakeKind kind, int& length, int param) {
 
 
 /**
+ * Get the file's path.
+ *
+ * @return The path
+ */
+const char* File::getPath () {
+
+	return filePath;
+
+}
+
+
+/**
  * Load a block of RLE compressed data from the file.
  *
  * @param length The length of the uncompressed block
@@ -669,9 +681,10 @@ void File::loadRLE (unsigned char* buffer, int length, bool checkSize) {
 	}
 	int start = tell();
 
-#if OJ_DEV_HOOKS
 	// Blocks that end early would otherwise leave uninitialised bytes
 	memset(buffer, 0, length);
+
+#if OJ_DEV_HOOKS
 	devDecoding(true);
 #endif
 

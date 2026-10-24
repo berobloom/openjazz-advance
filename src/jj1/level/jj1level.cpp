@@ -744,28 +744,26 @@ void JJ1Level::flash (unsigned char red, unsigned char green, unsigned char blue
 
 
 /**
- * Play the bonus level.
+ * Determine what follows the level, once it has been won.
  *
- * @return Error code
+ * @return The cutscene, bonus level and next level, for the caller to delete
  */
-int JJ1Level::playBonus () {
+JJ1LevelEnd JJ1Level::getEnd () {
 
-	char *bonusFile;
-	int ret;
+	JJ1LevelEnd end = {nullptr, nullptr, nullptr};
 
-	if (!localPlayer->getJJ1LevelPlayer()->hasGem()) return E_NONE;
-
-	delete paletteEffects;
-	paletteEffects = nullptr;
-
-	bonusFile = createFileName("BONUSMAP", worldToEpisode(worldNum));
+	// Play "Level end" cutscene
+	// if available and secret level 2 was not found (FIXME: check JJ1, if true)
+	if (strlen(sceneFile) && nextLevelNum != 2) end.scene = createString(sceneFile);
 
 	// If the gem has been collected, play the bonus level
-	ret = game->playLevel(bonusFile);
+	if (!multiplayer && localPlayer->getJJ1LevelPlayer()->hasGem())
+		end.bonus = createFileName("BONUSMAP", worldToEpisode(worldNum));
 
-	delete[] bonusFile;
+	// No next level, end game
+	if (nextLevelNum != 99) end.next = createFileName("LEVEL", nextLevelNum, nextWorldNum);
 
-	return ret;
+	return end;
 
 }
 
@@ -858,31 +856,7 @@ int JJ1Level::play () {
 			gbaLevel::leave();
 #endif
 
-			// Play "Level end" cutscene
-			// if available and secret level 2 was not found (FIXME: check JJ1, if true)
-			if (strlen(sceneFile) && nextLevelNum != 2) {
-				if (playScene(sceneFile) == E_QUIT) return E_QUIT;
-			}
-
-			if (!multiplayer) {
-				// If the gem has been collected, play the bonus level
-				ret = playBonus();
-
-				if (ret < 0) return ret;
-			}
-
-			// No next level, end game
-			if (nextLevelNum == 99) {
-				ret = game->setLevel(nullptr);
-			} else {
-				// Advance to next level
-				char *string = createFileName("LEVEL", nextLevelNum, nextWorldNum);
-				ret = game->setLevel(string);
-				delete[] string;
-			}
-
-			if (ret < 0) return ret;
-
+			// The game plays what follows, once the level has been deleted
 			return WON;
 		}
 

@@ -35,7 +35,14 @@ enum BakeKind {
 	BAKE_PIXELS = 2,        ///< File::loadPixels(length)
 	BAKE_MASKED_PIXELS = 3, ///< File::loadPixels(length, key); param is the key
 	BAKE_TILESET = 4,       ///< JJ1Level::loadTiles(), all tiles of a BLOCKS file
-	BAKE_FONT_ATLAS = 5     ///< A Font's character atlas; param tells fonts of one file apart
+	BAKE_FONT_ATLAS = 5,    ///< A Font's character atlas; param tells fonts of one file apart
+	BAKE_SCENE = 6          ///< A cutscene image; param is a SceneBake
+};
+
+/// What a BAKE_SCENE entry holds
+enum SceneBake {
+	SCENE_BAKE_BACKGROUND = 0, ///< An animation's compacted background, decoded
+	SCENE_BAKE_RLE_IMAGE = 1   ///< An RLE image's pixels, decoded
 };
 
 struct BakePackHeader {

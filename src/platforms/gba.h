@@ -43,9 +43,6 @@ inline int scaledRows (int y) { int r = y % 5; return ((y / 5) << 2) + r - (r >=
 #define NO_RESIZE
 #define T_MENU_FRAME 0 // Flips wait for VBlank already
 
-// Cutscenes do not fit in RAM yet
-#define NO_STARTUP_SCENE
-
 // Levels use the tile and sprite hardware at the native resolution (see gba/level_gba.h)
 #define OJ_TILED_LEVEL
 

@@ -194,7 +194,6 @@ class JJ1SceneAnimation {
 		JJ1SceneFrame*      lastFrame;
 
 		SDL_Surface*        background;
-		SDL_Surface*        scratch;
 		int id;
 		int frames;
 		int reverseAnimation;
@@ -215,6 +214,7 @@ class JJ1Scene {
 		std::list<JJ1SceneImage>     images;
 		std::list<JJ1ScenePalette>   palettes;
 		std::list<JJ1SceneFont>      fonts;
+		SDL_Surface*                 scratch = nullptr; ///< Animation frames are drawn here, one animation at a time
 
 		/// Scripts all information needed to render script pages, text etc
 		std::vector<JJ1ScenePage>      pages;
@@ -231,6 +231,7 @@ class JJ1Scene {
 
 	public:
 		explicit JJ1Scene (const char* fileName);
+		~JJ1Scene ();
 		JJ1Scene (const JJ1Scene&) = delete; // non construction-copyable
 		JJ1Scene& operator=(const JJ1Scene&) = delete; // non copyable
 

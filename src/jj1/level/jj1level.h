@@ -208,6 +208,13 @@ class JJ1Bullet;
 class JJ1Event;
 class JJ1LevelPlayer;
 
+/// What follows a won level. The level is deleted first, to free its memory.
+struct JJ1LevelEnd {
+	char* scene; ///< Cutscene to play, or nullptr
+	char* bonus; ///< Bonus level to play, or nullptr
+	char* next; ///< Next level, or nullptr to end the game
+};
+
 /// JJ1 level
 class JJ1Level : public Level {
 
@@ -257,7 +264,6 @@ class JJ1Level : public Level {
 		void loadSprite   (File* file, Sprite* sprite);
 		int  loadSprites  (char* fileName);
 		int  loadTiles    (char* fileName);
-		int  playBonus    ();
 
 		JJ1EventState* findEventState (unsigned char gridX, unsigned char gridY);
 		JJ1EventState& eventState     (unsigned char gridX, unsigned char gridY);
@@ -286,6 +292,8 @@ class JJ1Level : public Level {
 
 		JJ1Level (Game* owner, char* fileName, bool checkpoint, bool multi);
 		~JJ1Level () override;
+
+		JJ1LevelEnd    getEnd        ();
 
 		bool           checkMaskUp   (fixed x, fixed y);
 		bool           checkMaskDown (fixed x, fixed y);

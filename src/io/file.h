@@ -75,6 +75,8 @@ class File {
 
 		static bool        exists      (const char *fileName, int pathType = PATH_TYPE_ANY);
 
+		const char*        getPath     ();
+
 		int                getSize     ();
 		void               seek        (int offset, bool reset);
 		int                seek        (int offset, int origin = SEEK_CUR);

@@ -31,6 +31,7 @@
 #include "jj1/bonuslevel/jj1bonuslevel.h"
 #include "jj1/level/jj1level.h"
 #include "jj1/planet/jj1planet.h"
+#include "jj1/scene/jj1scene.h"
 #ifdef ENABLE_JJ2
 #include "jj2/level/jj2level.h"
 #endif
@@ -294,10 +295,70 @@ int Game::playLevel (char* fileName, bool intro, bool checkpoint) {
 
 		ret = level->play();
 
+		JJ1LevelEnd end = {nullptr, nullptr, nullptr};
+		if (ret == WON) end = level->getEnd();
+
 		delete level;
 		baseLevel = level = NULL;
 
+		if (ret == WON) ret = finishLevel(end);
+
 	}
+
+	return ret;
+
+}
+
+
+/**
+ * Play what follows a won JJ1 level: its cutscene, the bonus level, and then
+ * set the next level.
+ *
+ * @param end What follows the level, deleted here
+ *
+ * @return Error code, or WON
+ */
+int Game::finishLevel (JJ1LevelEnd& end) {
+
+	int ret = WON;
+
+	if (end.scene) {
+
+		JJ1Scene* scene = nullptr;
+
+		try {
+
+			scene = new JJ1Scene(end.scene);
+
+		} catch (int e) {
+
+			// Carry on without the cutscene
+
+		}
+
+		if (scene && scene->play() == E_QUIT) ret = E_QUIT;
+
+		delete scene;
+
+	}
+
+	if (ret == WON && end.bonus) {
+
+		int bonusRet = playLevel(end.bonus);
+		if (bonusRet < 0) ret = bonusRet;
+
+	}
+
+	if (ret == WON) {
+
+		int nextRet = setLevel(end.next);
+		if (nextRet < 0) ret = nextRet;
+
+	}
+
+	delete[] end.scene;
+	delete[] end.bonus;
+	delete[] end.next;
 
 	return ret;
 
