@@ -29,6 +29,7 @@
 
 #include "blit_gba.h"
 #include "level_gba.h"
+#include "sound_gba.h"
 #include "platforms/gba.h"
 
 #ifdef OJ_GBA_HEAP_TRACE
@@ -94,6 +95,8 @@ namespace {
 	u16 pressedThisFrame = 0;
 
 	void onVBlank () {
+		gbaSoundVBlank();
+
 		bool level = gbaLevel::active();
 		bool committed = flipPending;
 
@@ -110,13 +113,15 @@ namespace {
 		flipPending = false;
 
 		u16 held = ~REG_KEYINPUT & 0x3FF;
-		if (held == sampledButtons) return;
-
-		sampledButtons = held;
-		if (buttonLogHead - buttonLogTail < BUTTON_LOG_SIZE) {
-			buttonLog[buttonLogHead % BUTTON_LOG_SIZE] = held;
-			buttonLogHead = buttonLogHead + 1;
+		if (held != sampledButtons) {
+			sampledButtons = held;
+			if (buttonLogHead - buttonLogTail < BUTTON_LOG_SIZE) {
+				buttonLog[buttonLogHead % BUTTON_LOG_SIZE] = held;
+				buttonLogHead = buttonLogHead + 1;
+			}
 		}
+
+		gbaSoundFrame();
 	}
 
 	/**

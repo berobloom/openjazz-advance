@@ -21,6 +21,7 @@
 
 
 #include "bake.h"
+#include "bakemusic.h"
 #include "sweep.h"
 
 #include <algorithm>
@@ -392,6 +393,8 @@ int bakeSweep (const char* gameDir, const char* outPath) {
 
 	printf("bake: %zu files opened, %zu decoded blocks, %zu distinct, %d items failed to load\n",
 		opened.size(), records.size(), blobs.size(), failures);
+
+	if (!bakeMusic(gameDir, (std::string(outPath) + ".sound").c_str())) return 1;
 
 	return writePack(outPath) ? 0 : 1;
 

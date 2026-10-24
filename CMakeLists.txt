@@ -115,7 +115,7 @@ set(OJ_SOURCES
 	src/jj1/scene/jj1scene.h
 	src/jj1/scene/jj1sceneload.cpp)
 if(GBA)
-	# silent until the audio is converted for the GBA
+	# platforms/gba/sound_gba.cpp plays the sound with Maxmod
 	list(REMOVE_ITEM OJ_SOURCES src/io/sound.cpp)
 endif()
 if(ANDROID)
@@ -295,6 +295,8 @@ if(BAKE)
 	target_sources(OpenJazz PRIVATE
 		src/dev/bake.cpp
 		src/dev/bake.h
+		src/dev/bakemusic.cpp
+		src/dev/bakemusic.h
 		src/io/bakepack.h)
 	target_compile_definitions(OpenJazz PRIVATE OJ_BAKE)
 endif()
@@ -418,7 +420,9 @@ elseif(GBA)
 		src/platforms/gba/level_gba.h
 		src/platforms/gba/sdl/SDL.h
 		src/platforms/gba/sdl_gba.cpp
-		src/platforms/gba/sound_gba.cpp)
+		src/platforms/gba/sound_gba.cpp
+		src/platforms/gba/sound_gba.h)
+	target_link_libraries(OpenJazz PRIVATE mm)
 	# single thread, and the guards' condition variables are not implemented
 	target_compile_options(OpenJazz PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-fno-threadsafe-statics>)
 	set_source_files_properties(src/platforms/gba/pack.S PROPERTIES
@@ -456,8 +460,21 @@ elseif(GBA)
 		string(APPEND GBA_LD_EXCLUDE " *libgcc.a:${OBJ}")
 		string(APPEND GBA_LD_IWRAM "\t\t*libgcc.a:${OBJ}(.text*)\n")
 	endforeach()
-	string(REPLACE "\t\t*(EXCLUDE_FILE (*.iwram*) .text*)\n" "\t\t*(EXCLUDE_FILE (*.iwram*${GBA_LD_EXCLUDE} ) .text*)\n" GBA_LD "${GBA_LD}")
-	string(REPLACE "\t\t*(.iwram .iwram*)\n" "\t\t*(.iwram .iwram*)\n${GBA_LD_IWRAM}" GBA_LD "${GBA_LD}")
+	# Maxmod puts all its ARM code in IWRAM, but only the mixer runs often
+	# enough to need it. Its pattern player runs once per tick, from ROM, and
+	# keeps its variables in EWRAM.
+	set(GBA_LD_MM " *libmm.a:mm_mas.o *libmm.a:mm_mas_arm.o")
+	set(GBA_LD_ROM "\t\t*libmm.a:mm_mas.o(.iwram*)\n\t\t*libmm.a:mm_mas_arm.o(.iwram*)\n")
+	string(REPLACE "\t\t*(EXCLUDE_FILE (*.iwram*) .text*)\n" "\t\t*(EXCLUDE_FILE (*.iwram*${GBA_LD_EXCLUDE} ) .text*)\n${GBA_LD_ROM}" GBA_LD "${GBA_LD}")
+	string(REPLACE "\t\t*(.iwram .iwram*)\n" "\t\t*(EXCLUDE_FILE (${GBA_LD_MM} ) .iwram EXCLUDE_FILE (${GBA_LD_MM} ) .iwram*)\n${GBA_LD_IWRAM}" GBA_LD "${GBA_LD}")
+	set(GBA_LD_EXCLUDE "")
+	set(GBA_LD_EWRAM "")
+	foreach(OBJ mm_mas.o mm_effect.o mm_main.o mm_main_gba.o)
+		string(APPEND GBA_LD_EXCLUDE " *libmm.a:${OBJ}")
+		string(APPEND GBA_LD_EWRAM "\t\t*libmm.a:${OBJ}(.bss*)\n")
+	endforeach()
+	string(REPLACE "\t\t*(.sbss*)\n" "\t\t*(.sbss*)\n${GBA_LD_EWRAM}" GBA_LD "${GBA_LD}")
+	string(REPLACE "\t\t*(.bss*)\n" "\t\t*(EXCLUDE_FILE (${GBA_LD_EXCLUDE} ) .bss*)\n" GBA_LD "${GBA_LD}")
 	file(WRITE "${GBA_LD_DIR}/gba_cart.ld" "${GBA_LD}")
 	target_link_options(OpenJazz PRIVATE "-B${GBA_LD_DIR}/")
 	set_property(TARGET OpenJazz APPEND PROPERTY LINK_DEPENDS "${GBA_LD_DIR}/gba_cart.ld")

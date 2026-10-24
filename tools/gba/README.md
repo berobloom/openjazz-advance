@@ -32,6 +32,10 @@ which helps with hangs and crashes. Look the addresses up with
   Counting cycles shows where the time goes; counting instructions overstates
   quick code. `profsym.sh` reads these samples too.
 - `logframes` starts each line of the ROM's log with the frame number.
+- `wav=FROM:FILE` records the sound from frame FROM, as a 32768 Hz stereo WAV
+  file.
+- mGBA's own error messages, such as bad memory accesses, end with the CPU's
+  `pc` and `lr`, to find the code behind them.
 - `stackfree=ADDR` reports how much of the IWRAM stack was never touched. Pass
   the ROM's `__iheap_start`, from `arm-none-eabi-nm OpenJazz.elf`. The port
   fills the stack with a pattern at startup (see `src/platforms/gba.cpp`).

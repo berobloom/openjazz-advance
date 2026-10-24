@@ -21,7 +21,9 @@
  *   logframes              start each line of the ROM's log with the frame
  *   stackfree=ADDR         count untouched stack fill words from ADDR
  *                          (pass the ROM's __iheap_start)
+ *   wav=FROM:FILE          record the sound from frame FROM, 32768 Hz stereo
  */
+#include <mgba/core/blip_buf.h>
 #include <mgba/core/core.h>
 #include <mgba/core/log.h>
 #include <mgba/core/timing.h>
@@ -37,6 +39,7 @@ static uint16_t lastPage = 0;
 static int flips = 0, fpsFlips = 0, fpsFrom = 0, fpsTo = 0;
 static int profFrom = 0;
 static int logFrames = 0, frame = 0;
+static struct mCore* logCore = NULL;
 
 static void logger(struct mLogger* l, int category, enum mLogLevel level, const char* format, va_list args) {
 	(void)l;
@@ -46,8 +49,34 @@ static void logger(struct mLogger* l, int category, enum mLogLevel level, const 
 	if (logFrames) printf("[%d] ", frame);
 	printf(debug ? "" : "[mgba %s] ", name);
 	vprintf(format, args);
+	if (!debug && logCore) {
+		/* Where the emulated CPU was, to find the code behind bad accesses */
+		int32_t pc = 0, lr = 0;
+		logCore->readRegister(logCore, "pc", &pc);
+		logCore->readRegister(logCore, "lr", &lr);
+		printf(" (pc=%08x lr=%08x)", (unsigned)pc, (unsigned)lr);
+	}
 	printf("\n");
 	fflush(stdout);
+}
+
+#define WAV_RATE 32768
+
+static void putLe(FILE* f, uint32_t v, int bytes) { for (int i = 0; i < bytes; i++) fputc((v >> (8 * i)) & 0xFF, f); }
+
+static void wavHeader(FILE* f, uint32_t dataBytes) {
+	fwrite("RIFF", 1, 4, f); putLe(f, 36 + dataBytes, 4); fwrite("WAVEfmt ", 1, 8, f);
+	putLe(f, 16, 4); putLe(f, 1, 2); putLe(f, 2, 2); putLe(f, WAV_RATE, 4); putLe(f, WAV_RATE * 4, 4);
+	putLe(f, 4, 2); putLe(f, 16, 2); fwrite("data", 1, 4, f); putLe(f, dataBytes, 4);
+}
+
+/* Print the words on the stack that look like ROM code addresses */
+static void stackCode(struct mCore* core, uint32_t sp) {
+	for (uint32_t a = sp; a < 0x03008000 && a < sp + 0x1000; a += 4) {
+		uint32_t v = core->busRead32(core, a);
+		if ((v & 0xFE000000) == 0x08000000) printf(" %08x", v);
+	}
+	printf("\n");
 }
 
 static void put32(FILE* f, uint32_t v) { unsigned char b[4] = {v >> 24, v >> 16, v >> 8, v}; fwrite(b, 1, 4, f); }
@@ -117,6 +146,8 @@ int main(int argc, char** argv) {
 	struct { int frame; char* path; } shots[64]; int nShots = 0;
 	struct { int frame, len; uint32_t keys; } presses[256]; int nPresses = 0;
 	const char* sav = NULL;
+	const char* wavPath = NULL;
+	int wavFrom = 0;
 	for (int i = 3; i < argc; i++) {
 		if (!strncmp(argv[i], "shot=", 5)) { shots[nShots].frame = atoi(argv[i] + 5); shots[nShots++].path = strchr(argv[i] + 5, ':') + 1; }
 		else if (!strncmp(argv[i], "keys=", 5)) {
@@ -129,6 +160,7 @@ int main(int argc, char** argv) {
 		}
 		else if (!strncmp(argv[i], "peek=", 5)) peeks[nPeeks++] = strtoul(argv[i] + 5, NULL, 16);
 		else if (!strcmp(argv[i], "logframes")) logFrames = 1;
+		else if (!strncmp(argv[i], "wav=", 4)) { wavFrom = atoi(argv[i] + 4); wavPath = strchr(argv[i] + 4, ':') + 1; }
 		else if (!strncmp(argv[i], "stackfree=", 10)) stackBottom = strtoul(argv[i] + 10, NULL, 16);
 		else if (!strncmp(argv[i], "dump=", 5)) { dumpFrame = atoi(argv[i] + 5); dumpPath = strchr(argv[i] + 5, ':') + 1; }
 		else if (!strncmp(argv[i], "watch=", 6)) {
@@ -164,6 +196,19 @@ int main(int argc, char** argv) {
 		if (vf) core->loadSave(core, vf);
 	}
 	core->reset(core);
+	logCore = core;
+
+	FILE* wav = NULL;
+	uint32_t wavBytes = 0;
+	struct blip_t* left = core->getAudioChannel(core, 0);
+	struct blip_t* right = core->getAudioChannel(core, 1);
+	if (wavPath) {
+		core->setAudioBufferSize(core, 4096);
+		blip_set_rates(left, core->frequency(core), WAV_RATE);
+		blip_set_rates(right, core->frequency(core), WAV_RATE);
+		wav = fopen(wavPath, "wb");
+		wavHeader(wav, 0);
+	}
 
 	for (int f = 1; f <= frames; f++) {
 		frame = f;
@@ -183,7 +228,8 @@ int main(int argc, char** argv) {
 					int32_t lr = 0, sp = 0;
 					core->readRegister(core, "lr", &lr);
 					core->readRegister(core, "sp", &sp);
-					printf("[runner] frame %d: %08x %08x -> %08x at pc=%08x lr=%08x sp=%08x\n", f, watchAddr, old, now, (unsigned)pc, (unsigned)lr, (unsigned)sp);
+					printf("[runner] frame %d: %08x %08x -> %08x at pc=%08x lr=%08x sp=%08x, stack:", f, watchAddr, old, now, (unsigned)pc, (unsigned)lr, (unsigned)sp);
+					stackCode(core, sp);
 					old = now;
 				}
 			}
@@ -215,6 +261,16 @@ int main(int argc, char** argv) {
 				}
 			}
 		} else core->runFrame(core);
+		if (wav) {
+			int16_t stereo[8192];
+			int n;
+			while ((n = blip_samples_avail(left)) > 0) {
+				if (n > 4096) n = 4096;
+				blip_read_samples(left, stereo, n, 1);
+				blip_read_samples(right, stereo + 1, n, 1);
+				if (f >= wavFrom) { fwrite(stereo, 4, n, wav); wavBytes += n * 4; }
+			}
+		}
 		if (dumpPath && f == dumpFrame) {
 			FILE* d = fopen(dumpPath, "wb");
 			for (uint32_t a = 0x03000000; a < 0x03008000; a += 4) { uint32_t v = core->busRead32(core, a); fwrite(&v, 4, 1, d); }
@@ -234,6 +290,13 @@ int main(int argc, char** argv) {
 		}
 		for (int i = 0; i < nShots; i++)
 			if (shots[i].frame == f) { writePng(shots[i].path, buffer, w, h); printf("[runner] frame %d -> %s\n", f, shots[i].path); }
+	}
+
+	if (wav) {
+		fseek(wav, 0, SEEK_SET);
+		wavHeader(wav, wavBytes);
+		fclose(wav);
+		printf("[runner] sound -> %s, %.1f s\n", wavPath, wavBytes / 4.0 / WAV_RATE);
 	}
 
 	if (fpsFrom) {
@@ -263,11 +326,7 @@ int main(int argc, char** argv) {
 	int32_t sp = 0;
 	if (core->readRegister(core, "sp", &sp)) {
 		printf("[runner] stack code addresses:");
-		for (uint32_t a = (uint32_t)sp; a < 0x03008000 && a < (uint32_t)sp + 0x800; a += 4) {
-			uint32_t v = core->busRead32(core, a);
-			if ((v & 0xFE000000) == 0x08000000) printf(" %08x", v);
-		}
-		printf("\n");
+		stackCode(core, sp);
 	}
 
 	if (prof) fclose(prof);

@@ -34,10 +34,10 @@ Screenshots are from Episode 1 of the CD version, taken in mGBA and shown at twi
 
 Requirements:
 
-* The devkitPro GBA toolchain. Install devkitPro's pacman (see [Getting Started](https://devkitpro.org/wiki/Getting_Started)), then run `sudo dkp-pacman -S gba-dev` and `source /etc/profile.d/devkit-env.sh`.
+* The devkitPro GBA toolchain. Install devkitPro's pacman (see [Getting Started](https://devkitpro.org/wiki/Getting_Started)), then run `sudo dkp-pacman -S gba-dev` and `source /etc/profile.d/devkit-env.sh`. It includes Maxmod, which plays the sound, and its `mmutil` tool.
 * CMake, a C++ compiler and the SDL2 development package for Linux, to build the desktop program that bakes the game data.
 
-The GBA has 256 KB of RAM, against the 1 MB or more that a level takes on the desktop. So graphics are decoded ahead of time, on the desktop, into a game data pack that the ROM uses in place. Bake the pack from your game directory first:
+The GBA has 256 KB of RAM, against the 1 MB or more that a level takes on the desktop. So graphics are decoded ahead of time, on the desktop, into a game data pack that the ROM uses in place. The same step converts the music and sound effects into a Maxmod soundbank, using `mmutil` from `$DEVKITPRO` (or the path in `$MMUTIL`); without it, the pack has no sound. Bake the pack from your game directory first:
 
     cmake -B build-bake -DBAKE=ON -DCMAKE_BUILD_TYPE=Release
     cmake --build build-bake
@@ -68,22 +68,22 @@ The ROM is about 22 MB, so a flash cartridge needs to take 32 MB ROMs. It has be
 * **A smaller view.** Levels are drawn at the GBA's own 240x160 with its tile layers and hardware sprites, so they run at 60 frames per second but show less of the level than the desktop's 320x200. The panel at the bottom is scaled to fit the width.
 * **Scaled screens.** Menus, the planet screen and bonus levels are drawn at 320x200 and scaled down to the screen.
 * **Faster loading.** Files are read straight from the game data pack in ROM.
+* **Sound through Maxmod.** The songs are converted from their PSM files to Impulse Tracker modules when the pack is baked, and played by Maxmod, mixed at 16 kHz.
 
 ### Status
 
-Working: the menus, the menu demos, levels at 60 frames per second (tested mostly in Episode 1), dying and reloading, level end statistics, bonus levels and moving on to the next level.
+Working: the menus, the menu demos, levels at 60 frames per second (tested mostly in Episode 1), music and sound effects, dying and reloading, level end statistics, bonus levels and moving on to the next level.
 
 Not done yet:
 
-* **No sound or music.** Converting the music to Maxmod is planned.
 * **No saving.** Neither games nor settings are saved; the cartridge's SRAM is not used yet.
 * **Cutscenes.** The startup cutscene is skipped, and the cutscenes between worlds haven't been tried.
-* **Bonus levels run at about 13 frames per second.** Their floor is drawn pixel by pixel; the GBA's rotation backgrounds could do it in hardware, but don't fit these levels as they are.
+* **Bonus levels run at about 12 frames per second.** Their floor is drawn pixel by pixel; the GBA's rotation backgrounds could do it in hardware, but don't fit these levels as they are.
 * Most worlds after Episode 1 haven't been played through on the GBA.
 
 ### Tools
 
-`tools/gba` has the tools used to develop the port: a headless runner built on mGBA's core for screenshots, scripted key presses, profiling and frame rate counts, benchmarks, and the desktop frame comparison. See [tools/gba/README.md](tools/gba/README.md).
+`tools/gba` has the tools used to develop the port: a headless runner built on mGBA's core for screenshots, sound recordings, scripted key presses, profiling and frame rate counts, benchmarks, and the desktop frame comparison. See [tools/gba/README.md](tools/gba/README.md).
 
 ## Desktop
 
