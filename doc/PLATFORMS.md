@@ -34,6 +34,12 @@ Use the provided CMake Toolchain file or wrapper script:
 
 `cmake -DCMAKE_TOOLCHAIN_FILE=${DEVKITPRO}/cmake/Switch.cmake`
 
+### Game Boy Advance
+
+`cmake -DCMAKE_TOOLCHAIN_FILE=${DEVKITPRO}/cmake/GBA.cmake -DGBA_PACK=<pack>`
+
+The game data is built into the ROM as a baked pack: see the README.
+
 #### Additional options for 3DS and Switch:
 
   * Embed a directory in the executable: `-DROMFS=ON`
