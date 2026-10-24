@@ -12,6 +12,8 @@
  *   sav=FILE               save file
  *   fps=FROM               count Mode 4 page flips from frame FROM
  *   prof=FROM:FILE         write "pc lr" at the end of each frame from FROM on
+ *   sample=FROM:N:FILE     single-step from FROM and write "pc lr" every N
+ *                          instructions (slow; for short runs)
  *   dump=FRAME:FILE        dump IWRAM
  *   watch=FROM:ADDR        single-step from FROM, report each change of a word
  *   peek=ADDR              print a word at the end (hex address)
@@ -92,6 +94,8 @@ static uint32_t parseButtons(const char* s) {
 }
 
 static int dumpFrame = 0, watchFrom = 0;
+static int sampleFrom = 0, sampleEvery = 0;
+static FILE* samples = NULL;
 static uint32_t peeks[16]; static int nPeeks = 0;
 static uint32_t stackBottom = 0;
 static const char* dumpPath = NULL;
@@ -100,6 +104,7 @@ static uint32_t watchAddr = 0;
 int main(int argc, char** argv) {
 	if (argc < 3) {
 		fprintf(stderr, "usage: %s ROM FRAMES [shot=F:FILE] [keys=F:LEN:BTN] [sav=FILE] [fps=FROM] [prof=FROM:FILE]\n"
+			"       [sample=FROM:N:FILE]"
 			"       [dump=F:FILE] [watch=FROM:ADDR] [peek=ADDR] [stackfree=ADDR]\n", argv[0]);
 		return 2;
 	}
@@ -121,6 +126,11 @@ int main(int argc, char** argv) {
 		else if (!strncmp(argv[i], "watch=", 6)) {
 			/* watch=FROM:ADDR single-steps from frame FROM and reports each change of the word at ADDR */
 			char* p = argv[i] + 6; watchFrom = strtol(p, &p, 10); watchAddr = strtoul(p + 1, NULL, 16);
+		}
+		else if (!strncmp(argv[i], "sample=", 7)) {
+			char* p = argv[i] + 7; sampleFrom = strtol(p, &p, 10);
+			sampleEvery = strtol(p + 1, &p, 10);
+			samples = fopen(p + 1, "w");
 		}
 		else if (!strncmp(argv[i], "prof=", 5)) {
 			/* prof=FROM:FILE writes "pc lr" at the end of each frame from FROM on */
@@ -165,6 +175,19 @@ int main(int argc, char** argv) {
 					core->readRegister(core, "sp", &sp);
 					printf("[runner] frame %d: %08x %08x -> %08x at pc=%08x lr=%08x sp=%08x\n", f, watchAddr, old, now, (unsigned)pc, (unsigned)lr, (unsigned)sp);
 					old = now;
+				}
+			}
+		} else if (samples && f >= sampleFrom) {
+			uint32_t frameStart = core->frameCounter(core);
+			int n = 0;
+			while (core->frameCounter(core) == frameStart) {
+				core->step(core);
+				if (++n == sampleEvery) {
+					int32_t pc = 0, lr = 0;
+					core->readRegister(core, "pc", &pc);
+					core->readRegister(core, "lr", &lr);
+					fprintf(samples, "%08x %08x\n", (unsigned)pc, (unsigned)lr);
+					n = 0;
 				}
 			}
 		} else core->runFrame(core);
@@ -221,6 +244,7 @@ int main(int argc, char** argv) {
 	}
 
 	if (prof) fclose(prof);
+	if (samples) fclose(samples);
 	core->deinit(core);
 	return 0;
 }
