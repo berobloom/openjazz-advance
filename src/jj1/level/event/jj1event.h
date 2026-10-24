@@ -84,9 +84,11 @@ class JJ1Event : public Movable {
 		void setAnimType  (unsigned char type);
 		void setAnimFrame (int frame, bool looping);
 
-		JJ1EventType* prepareStep (unsigned int ticks);
+		JJ1EventType* prepareStep ();
 
 	public:
+		template <class T> friend T* stepList (T* first, unsigned int ticks);
+
 		virtual ~JJ1Event ();
 
 		JJ1Event*      getNext        ();

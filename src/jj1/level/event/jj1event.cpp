@@ -276,14 +276,11 @@ void JJ1Event::setAnimFrame (int frame, bool looping) {
 /**
  * Functionality required by all event types on each iteration
  *
- * @param ticks Time
- *
  * @return Animation
  */
-JJ1EventType* JJ1Event::prepareStep (unsigned int ticks) {
+JJ1EventType* JJ1Event::prepareStep () {
 
-	// Process the next event
-	if (next) next = next->step(ticks);
+	// The rest of the list has been processed already (see stepList())
 
 	// If the event has been removed from the grid, destroy it
 	if (!set) return NULL;

@@ -63,7 +63,9 @@ JJ1Bridge::JJ1Bridge (unsigned char gX, unsigned char gY) : JJ1Event(gX, gY) {
  */
 JJ1Event* JJ1Bridge::step (unsigned int ticks) {
 
-	set = prepareStep(ticks);
+	OJ_UNUSED(ticks);
+
+	set = prepareStep();
 	if (!set) return remove(false);
 
 	fixed bridgeLength = set->multiA * set->pieceSize * F4;

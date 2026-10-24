@@ -71,7 +71,7 @@ DeckGuardian::DeckGuardian (unsigned char gX, unsigned char gY) : Guardian(gX, g
  */
 JJ1Event* DeckGuardian::step (unsigned int ticks) {
 
-	set = prepareStep(ticks);
+	set = prepareStep();
 	if (!set) return remove(false);
 
 	int count = level->getEventHits(gridX, gridY);
@@ -188,7 +188,7 @@ JJ1Event* MedGuardian::step(unsigned int ticks) {
 	fixed sin = fSin(ticks / 2);
 	fixed cos = fCos(ticks / 2);
 
-	set = prepareStep(ticks);
+	set = prepareStep();
 
 	if (!set) return remove(false);
 

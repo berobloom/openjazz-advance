@@ -31,6 +31,7 @@
 #include "event/jj1guardians.h"
 #include "jj1level.h"
 #include "jj1levelplayer.h"
+#include "jj1steplist.h"
 
 #include "game/game.h"
 #include "game/gamemode.h"
@@ -138,13 +139,13 @@ int JJ1Level::step () {
 
 
 	// Process bullets
-	if (bullets) bullets = bullets->step(ticks);
+	if (bullets) bullets = stepList(bullets, ticks);
 
 	// Determine the players' trajectories
 	for (x = 0; x < nPlayers; x++) players[x].getJJ1LevelPlayer()->control(ticks);
 
 	// Process active events
-	if (events) events = events->step(ticks);
+	if (events) events = stepList(events, ticks);
 
 	// Apply as much of those trajectories as possible, without going into the
 	// scenery

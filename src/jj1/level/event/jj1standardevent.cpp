@@ -572,7 +572,7 @@ JJ1Event* JJ1StandardEvent::step (unsigned int ticks) {
 	int hits;
 
 
-	set = prepareStep(ticks);
+	set = prepareStep();
 	hits = level->getEventHits(gridX, gridY);
 
 	// If the event is off-screen, remove it (permanently if it's been deflected by a shield)

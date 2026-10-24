@@ -105,6 +105,7 @@ set(OJ_SOURCES
 	src/jj1/level/jj1level.cpp
 	src/jj1/level/jj1level.h
 	src/jj1/level/jj1levelframe.cpp
+	src/jj1/level/jj1steplist.h
 	src/jj1/level/jj1levelload.cpp
 	src/jj1/planet/jj1planet.cpp
 	src/jj1/planet/jj1planet.h

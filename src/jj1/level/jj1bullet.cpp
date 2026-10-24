@@ -130,9 +130,7 @@ JJ1LevelPlayer* JJ1Bullet::getSource () {
  */
 JJ1Bullet* JJ1Bullet::step (unsigned int ticks) {
 
-	// Process the next bullet
-	if (next) next = next->step(ticks);
-
+	// The rest of the list has been processed already (see stepList())
 
 	if (level->getStage() != LS_END) {
 
