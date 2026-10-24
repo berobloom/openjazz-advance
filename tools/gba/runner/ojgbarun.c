@@ -10,18 +10,21 @@
  *   keys=FRAME:LEN:BUTTONS hold buttons for LEN frames; A B s(elect) S(tart),
  *                          D-pad r l U D, shoulders R L
  *   sav=FILE               save file
- *   fps=FROM               count Mode 4 page flips from frame FROM
+ *   fps=FROM[:TO]          count page flips from frame FROM (to TO)
  *   prof=FROM:FILE         write "pc lr" at the end of each frame from FROM on
  *   sample=FROM:N:FILE     single-step from FROM and write "pc lr" every N
- *                          instructions (slow; for short runs)
+ *                          instructions, or every N cycles if N ends in c
+ *                          (slow; for short runs)
  *   dump=FRAME:FILE        dump IWRAM
  *   watch=FROM:ADDR        single-step from FROM, report each change of a word
  *   peek=ADDR              print a word at the end (hex address)
+ *   logframes              start each line of the ROM's log with the frame
  *   stackfree=ADDR         count untouched stack fill words from ADDR
  *                          (pass the ROM's __iheap_start)
  */
 #include <mgba/core/core.h>
 #include <mgba/core/log.h>
+#include <mgba/core/timing.h>
 #include <mgba/core/config.h>
 #include <mgba-util/vfs.h>
 #include <stdio.h>
@@ -31,14 +34,16 @@
 
 static FILE* prof = NULL;
 static uint16_t lastPage = 0;
-static int flips = 0, fpsFlips = 0, fpsFrom = 0;
+static int flips = 0, fpsFlips = 0, fpsFrom = 0, fpsTo = 0;
 static int profFrom = 0;
+static int logFrames = 0, frame = 0;
 
 static void logger(struct mLogger* l, int category, enum mLogLevel level, const char* format, va_list args) {
 	(void)l;
 	const char* name = mLogCategoryName(category);
 	int debug = name && strcmp(name, "GBA Debug") == 0;
 	if (!debug && !(level & (mLOG_FATAL | mLOG_ERROR | mLOG_GAME_ERROR))) return;
+	if (logFrames) printf("[%d] ", frame);
 	printf(debug ? "" : "[mgba %s] ", name);
 	vprintf(format, args);
 	printf("\n");
@@ -94,7 +99,7 @@ static uint32_t parseButtons(const char* s) {
 }
 
 static int dumpFrame = 0, watchFrom = 0;
-static int sampleFrom = 0, sampleEvery = 0;
+static int sampleFrom = 0, sampleEvery = 0, sampleCycles = 0;
 static FILE* samples = NULL;
 static uint32_t peeks[16]; static int nPeeks = 0;
 static uint32_t stackBottom = 0;
@@ -103,9 +108,8 @@ static uint32_t watchAddr = 0;
 
 int main(int argc, char** argv) {
 	if (argc < 3) {
-		fprintf(stderr, "usage: %s ROM FRAMES [shot=F:FILE] [keys=F:LEN:BTN] [sav=FILE] [fps=FROM] [prof=FROM:FILE]\n"
-			"       [sample=FROM:N:FILE]"
-			"       [dump=F:FILE] [watch=FROM:ADDR] [peek=ADDR] [stackfree=ADDR]\n", argv[0]);
+		fprintf(stderr, "usage: %s ROM FRAMES [shot=F:FILE] [keys=F:LEN:BTN] [sav=FILE] [fps=FROM[:TO]] [prof=FROM:FILE]\n"
+			"       [sample=FROM:N[c]:FILE] [dump=F:FILE] [watch=FROM:ADDR] [peek=ADDR] [stackfree=ADDR] [logframes]\n", argv[0]);
 		return 2;
 	}
 	int frames = atoi(argv[2]);
@@ -119,8 +123,12 @@ int main(int argc, char** argv) {
 			char* p = argv[i] + 5; presses[nPresses].frame = strtol(p, &p, 10);
 			presses[nPresses].len = strtol(p + 1, &p, 10); presses[nPresses++].keys = parseButtons(p + 1);
 		} else if (!strncmp(argv[i], "sav=", 4)) sav = argv[i] + 4;
-		else if (!strncmp(argv[i], "fps=", 4)) fpsFrom = atoi(argv[i] + 4);
+		else if (!strncmp(argv[i], "fps=", 4)) {
+			char* p = argv[i] + 4; fpsFrom = strtol(p, &p, 10);
+			if (*p == ':') fpsTo = strtol(p + 1, NULL, 10);
+		}
 		else if (!strncmp(argv[i], "peek=", 5)) peeks[nPeeks++] = strtoul(argv[i] + 5, NULL, 16);
+		else if (!strcmp(argv[i], "logframes")) logFrames = 1;
 		else if (!strncmp(argv[i], "stackfree=", 10)) stackBottom = strtoul(argv[i] + 10, NULL, 16);
 		else if (!strncmp(argv[i], "dump=", 5)) { dumpFrame = atoi(argv[i] + 5); dumpPath = strchr(argv[i] + 5, ':') + 1; }
 		else if (!strncmp(argv[i], "watch=", 6)) {
@@ -130,6 +138,7 @@ int main(int argc, char** argv) {
 		else if (!strncmp(argv[i], "sample=", 7)) {
 			char* p = argv[i] + 7; sampleFrom = strtol(p, &p, 10);
 			sampleEvery = strtol(p + 1, &p, 10);
+			if (*p == 'c') { sampleCycles = 1; p++; }
 			samples = fopen(p + 1, "w");
 		}
 		else if (!strncmp(argv[i], "prof=", 5)) {
@@ -157,6 +166,7 @@ int main(int argc, char** argv) {
 	core->reset(core);
 
 	for (int f = 1; f <= frames; f++) {
+		frame = f;
 		uint32_t keys = 0;
 		for (int i = 0; i < nPresses; i++)
 			if (f >= presses[i].frame && f < presses[i].frame + presses[i].len) keys |= presses[i].keys;
@@ -179,15 +189,29 @@ int main(int argc, char** argv) {
 			}
 		} else if (samples && f >= sampleFrom) {
 			uint32_t frameStart = core->frameCounter(core);
+			static uint64_t nextSample = 0;
 			int n = 0;
 			while (core->frameCounter(core) == frameStart) {
-				core->step(core);
-				if (++n == sampleEvery) {
-					int32_t pc = 0, lr = 0;
+				int32_t pc = 0, lr = 0;
+				if (sampleCycles) {
+					/* The instruction about to run takes the cycles until the next one */
 					core->readRegister(core, "pc", &pc);
 					core->readRegister(core, "lr", &lr);
-					fprintf(samples, "%08x %08x\n", (unsigned)pc, (unsigned)lr);
-					n = 0;
+					core->step(core);
+					uint64_t now = mTimingGlobalTime(core->timing);
+					if (!nextSample) nextSample = now + sampleEvery;
+					while (now >= nextSample) {
+						fprintf(samples, "%08x %08x\n", (unsigned)pc, (unsigned)lr);
+						nextSample += sampleEvery;
+					}
+				} else {
+					core->step(core);
+					if (++n == sampleEvery) {
+						core->readRegister(core, "pc", &pc);
+						core->readRegister(core, "lr", &lr);
+						fprintf(samples, "%08x %08x\n", (unsigned)pc, (unsigned)lr);
+						n = 0;
+					}
 				}
 			}
 		} else core->runFrame(core);
@@ -199,7 +223,7 @@ int main(int argc, char** argv) {
 		/* Count Mode 4 page swaps: the engine's frame rate */
 		{
 			uint16_t page = core->busRead16(core, 0x04000000) & 0x10;
-			if (f > 1 && page != lastPage) { flips++; if (f >= fpsFrom) fpsFlips++; }
+			if (f > 1 && page != lastPage) { flips++; if (f >= fpsFrom && (!fpsTo || f <= fpsTo)) fpsFlips++; }
 			lastPage = page;
 		}
 		if (prof && f >= profFrom) {
@@ -212,8 +236,11 @@ int main(int argc, char** argv) {
 			if (shots[i].frame == f) { writePng(shots[i].path, buffer, w, h); printf("[runner] frame %d -> %s\n", f, shots[i].path); }
 	}
 
-	if (fpsFrom) printf("[runner] %d page flips from frame %d: %.1f fps\n", fpsFlips, fpsFrom,
-		fpsFlips * 60.0 / (frames - fpsFrom + 1));
+	if (fpsFrom) {
+		int to = (fpsTo && fpsTo < frames)? fpsTo: frames;
+		printf("[runner] %d page flips in frames %d-%d: %.1f fps\n", fpsFlips, fpsFrom, to,
+			fpsFlips * 60.0 / (to - fpsFrom + 1));
+	}
 
 	for (int i = 0; i < nPeeks; i++) printf("[runner] peek %08x = %u\n", peeks[i], core->busRead32(core, peeks[i]));
 	if (stackBottom) {

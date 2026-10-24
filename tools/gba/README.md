@@ -22,9 +22,16 @@ At the end it prints the CPU registers and the ROM addresses found on the stack,
 which helps with hangs and crashes. Look the addresses up with
 `arm-none-eabi-addr2line -e OpenJazz.elf`.
 
-- `fps=FROM` counts page flips, which gives the game's own frame rate.
+- `fps=FROM[:TO]` counts page flips, which gives the game's own frame rate.
+  In levels the port toggles the page bit with each frame shown, so this
+  works there too.
 - `prof=FROM:FILE` samples the PC once per frame. `profsym.sh ELF FILE` turns
   the samples into a per-function histogram.
+- `sample=FROM:N:FILE` single-steps from frame FROM and writes the PC and LR
+  every N instructions, or every N cycles with `Nc` (for example `2000c`).
+  Counting cycles shows where the time goes; counting instructions overstates
+  quick code. `profsym.sh` reads these samples too.
+- `logframes` starts each line of the ROM's log with the frame number.
 - `stackfree=ADDR` reports how much of the IWRAM stack was never touched. Pass
   the ROM's `__iheap_start`, from `arm-none-eabi-nm OpenJazz.elf`. The port
   fills the stack with a pattern at startup (see `src/platforms/gba.cpp`).
@@ -36,7 +43,9 @@ which helps with hangs and crashes. Look the addresses up with
     ./bench-run.sh ROM fps=2200 shot=3000:run.png
 
 Use the standing benchmark to compare builds. While running, the scene depends
-on how fast the game runs, so two builds don't draw the same frames.
+on how fast the game runs, so two builds don't draw the same frames. Jazz also
+loses lives on the way: the first death and level reload come at about frame
+2650, so measure the running frame rate over `fps=2100:2600`.
 
 ## Blitter tests
 
