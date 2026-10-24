@@ -278,6 +278,7 @@ int Network::join (char *address) {
 
 	return (int)socket;
 #else
+	OJ_UNUSED(address);
 	return E_N_OTHER;
 #endif
 
@@ -317,6 +318,7 @@ int Network::accept (int sock) {
 
 	return (int)&clientSocket;
 #else
+	OJ_UNUSED(sock);
 	return -1;
 #endif
 
@@ -338,6 +340,8 @@ void Network::close (int sock) {
 	#endif
 #elif defined USE_SDL_NET
 	SDLNet_TCP_Close((TCPsocket)sock);
+#else
+	OJ_UNUSED(sock);
 #endif
 
 }
@@ -358,6 +362,8 @@ int Network::send (int sock, unsigned char *buffer) {
 #elif defined USE_SDL_NET
 	return SDLNet_TCP_Send((TCPsocket)sock, reinterpret_cast<char*>(buffer), buffer[0]);
 #else
+	OJ_UNUSED(sock);
+	OJ_UNUSED(buffer);
 	return 0;
 #endif
 
@@ -380,6 +386,9 @@ int Network::recv (int sock, unsigned char *buffer, int length) {
 #elif defined USE_SDL_NET
 	return SDLNet_TCP_Recv((TCPsocket)sock, buffer, length);
 #else
+	OJ_UNUSED(sock);
+	OJ_UNUSED(buffer);
+	OJ_UNUSED(length);
 	return 0;
 #endif
 
@@ -407,6 +416,7 @@ bool Network::isConnected (int sock) {
 #elif defined USE_SDL_NET
 	return SDLNet_SocketReady((TCPsocket)sock);
 #else
+	OJ_UNUSED(sock);
 	return false;
 #endif
 

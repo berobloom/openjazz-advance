@@ -198,7 +198,7 @@ Font::Font (const char* fileName) {
 		rects[i] = { i, w, h, 0, 0, 0 };
 
 		// save size
-		atlasRects[i] = { -1, -1, w, h };
+		atlasRects[i] = { -1, -1, static_cast<decltype(atlasRects[i].w)>(w), static_cast<decltype(atlasRects[i].h)>(h) };
 	}
 
 	delete file;
@@ -305,7 +305,8 @@ Font::Font (unsigned char* pixels, bool big) {
 		rects[i] = { i, charWidth, lineHeight, 0, 0, 0 };
 
 		// save size
-		atlasRects[i] = { -1, -1, charWidth, lineHeight };
+		atlasRects[i] = { -1, -1, static_cast<decltype(atlasRects[i].w)>(charWidth),
+			static_cast<decltype(atlasRects[i].h)>(lineHeight) };
 	}
 
 	delete[] chrPixels;
@@ -436,7 +437,8 @@ Font::Font (bool bonus) {
 		rects[i] = { i, width, height, 0, 0, 0 };
 
 		// save size
-		atlasRects[i] = { -1, -1, width, height };
+		atlasRects[i] = { -1, -1, static_cast<decltype(atlasRects[i].w)>(width),
+			static_cast<decltype(atlasRects[i].h)>(height) };
 	}
 
 	delete file;
@@ -578,7 +580,7 @@ Point Font::showString (const char* string, int x, int y,
 			}
 
 			// Determine the character's position on the screen
-			SDL_Rect dst = { xOffset, yOffset, 0, 0 };
+			SDL_Rect dst = { static_cast<decltype(dst.x)>(xOffset), static_cast<decltype(dst.y)>(yOffset), 0, 0 };
 
 			// Draw the character to the screen
 			SDL_BlitSurface(characterAtlas, &atlasRects[c], canvas, &dst);
@@ -615,7 +617,7 @@ int Font::showSceneString (const unsigned char* string, int x, int y) {
 	for (int i = 0; string[i]; i++) {
 
 		// Determine the character's position on the screen
-		SDL_Rect dst = { offset, y, 0, 0 };
+		SDL_Rect dst = { static_cast<decltype(dst.x)>(offset), static_cast<decltype(dst.y)>(y), 0, 0 };
 
 		// use space for invalid characters
 		if (string[i] >= nCharacters) {

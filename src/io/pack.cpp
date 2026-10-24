@@ -105,7 +105,8 @@ namespace {
 		entries = reinterpret_cast<const BakePackEntry*>(pack + header->entriesOffset);
 		segments = reinterpret_cast<const BakePackSegment*>(pack + header->segmentsOffset);
 
-		LOG_INFO("Using game data pack: %u files, %u decoded blocks", header->nFiles, header->nEntries);
+		LOG_INFO("Using game data pack: %u files, %u decoded blocks",
+			static_cast<unsigned int>(header->nFiles), static_cast<unsigned int>(header->nEntries));
 
 		return true;
 
@@ -179,7 +180,7 @@ const unsigned char* packSpan (const BakePackFile* file, uint32_t pos, uint32_t&
 
 	start = segment > first ? segment[-1].offset + segment[-1].length : 0;
 	end = segment < last ? segment->offset : file->size;
-	if (!holeReads++) LOG_WARN("Read from a hole in %s at %u", file->name, pos);
+	if (!holeReads++) LOG_WARN("Read from a hole in %s at %u", file->name, static_cast<unsigned int>(pos));
 
 	return nullptr;
 
