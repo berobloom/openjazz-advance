@@ -12,15 +12,16 @@
  * @par Description:
  * Records every live heap block with the code that allocated it, for
  * finding where the RAM goes (GBA_HEAP_TRACE). The linker sends malloc,
- * free, realloc and calloc here. The records live in the sprite part of
- * VRAM, which the bitmap screen modes leave unused, so tracing takes no
- * RAM from the game.
+ * free, realloc and calloc here. The records take 16KB of EWRAM, so a
+ * traced build runs out of RAM sooner. (Sprite VRAM would be free on the
+ * bitmap screen, but levels use it for their sprites.)
  *
  */
 
 
 #include "heaptrace.h"
 
+#include <gba_base.h>
 #include <malloc.h>
 #include <stdio.h>
 #include <string.h>
@@ -40,8 +41,8 @@ namespace {
 		void*        caller;
 	};
 
-	Record* const records = reinterpret_cast<Record*>(0x06014000);
 	const int maxRecords = 0x4000 / sizeof(Record);
+	EWRAM_BSS Record records[maxRecords];
 	int nRecords = 0;
 	int lostRecords = 0;
 
