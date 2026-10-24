@@ -34,6 +34,9 @@
 #include "io/gfx/font.h"
 #include "io/gfx/sprite.h"
 #include "io/gfx/video.h"
+#ifdef OJ_TILED_LEVEL
+	#include "platforms/gba/level_gba.h"
+#endif
 #include "io/sound.h"
 #include "player/player.h"
 #include "jj1/scene/jj1scene.h"
@@ -321,6 +324,11 @@ int Level::select (bool& menu, int option) {
 
 				playConfirmSound();
 
+#ifdef OJ_TILED_LEVEL
+				// The menu draws on the bitmap screen; the level returns after its palette, below
+				gbaLevel::Pause paused;
+#endif
+
 				int ret = fileMenu.run(true, false);
 				if (ret == E_QUIT) return E_QUIT;
 				if (ret >= 0) {
@@ -344,6 +352,11 @@ int Level::select (bool& menu, int option) {
 
 				playConfirmSound();
 
+#ifdef OJ_TILED_LEVEL
+				// The menu draws on the bitmap screen; the level returns after its palette, below
+				gbaLevel::Pause paused;
+#endif
+
 				int ret = fileMenu.run(false, false);
 				if (ret == E_QUIT) return E_QUIT;
 				if (ret >= 0) {
@@ -364,6 +377,11 @@ int Level::select (bool& menu, int option) {
 			if (!multiplayer) {
 
 				playConfirmSound();
+
+#ifdef OJ_TILED_LEVEL
+				// The menu draws on the bitmap screen; the level returns after its palette, below
+				gbaLevel::Pause paused;
+#endif
 
 				bool wasSlow = setup.slowMotion;
 

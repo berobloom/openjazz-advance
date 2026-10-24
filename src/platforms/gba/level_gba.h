@@ -116,6 +116,17 @@ namespace gbaLevel {
 			~Scope () { leave(); }
 	};
 
+	/// Shows the bitmap screen while it exists, for menus, then the level again
+	class Pause {
+		public:
+			Pause ();
+			~Pause ();
+
+		private:
+			SDL_Surface* tileSet;
+			int tiles, key, black;
+	};
+
 
 	/* For the SDL stand-in (see sdl_gba.cpp) */
 

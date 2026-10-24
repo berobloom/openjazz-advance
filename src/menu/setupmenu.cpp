@@ -677,7 +677,14 @@ int SetupMenu::run () {
 
 		ret = generic("SETUP OPTIONS", setupOptions, 6, option);
 
-		if (ret == E_RETURN) return E_NONE;
+		if (ret == E_RETURN) {
+
+			// Keep the settings even if the game is never quit properly
+			setup.save();
+
+			return E_NONE;
+
+		}
 		if (ret < 0) return ret;
 
 		switch (option) {

@@ -423,7 +423,8 @@ elseif(GBA)
 		src/platforms/gba/sdl/SDL.h
 		src/platforms/gba/sdl_gba.cpp
 		src/platforms/gba/sound_gba.cpp
-		src/platforms/gba/sound_gba.h)
+		src/platforms/gba/sound_gba.h
+		src/platforms/gba/sram_gba.cpp)
 	target_link_libraries(OpenJazz PRIVATE mm)
 	# single thread, and the guards' condition variables are not implemented
 	target_compile_options(OpenJazz PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-fno-threadsafe-statics>)

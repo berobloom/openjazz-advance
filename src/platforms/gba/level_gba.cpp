@@ -711,6 +711,22 @@ void gbaLevel::leave () {
 }
 
 
+gbaLevel::Pause::Pause () : tileSet(nullptr), tiles(0), key(0), black(0) {
+	if (!state) return;
+
+	tileSet = state->tileSet;
+	tiles = state->tiles;
+	key = state->key;
+	black = state->black;
+	leave();
+}
+
+
+gbaLevel::Pause::~Pause () {
+	if (tileSet) enter(tileSet, tiles, key, black);
+}
+
+
 bool gbaLevel::active () {
 	return state;
 }

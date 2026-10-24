@@ -68,15 +68,15 @@ The ROM is about 22 MB, so a flash cartridge needs to take 32 MB ROMs. It has be
 * **A smaller view.** Levels are drawn at the GBA's own 240x160 with its tile layers and hardware sprites, so they run at 60 frames per second but show less of the level than the desktop's 320x200. The panel at the bottom is scaled to fit the width.
 * **Scaled screens.** Menus, cutscenes, the planet screen and bonus levels are drawn at 320x200 and scaled down to the screen. Their text is drawn with characters shrunk when the pack is baked, so that it stays readable.
 * **Faster loading.** Files are read straight from the game data pack in ROM.
+* **Saving in SRAM.** Saved games and settings are kept in the cartridge's 32 KB of battery-backed SRAM, so emulators keep them in a `.sav` file. Settings are saved when you leave Setup Options, since a GBA game is never quit.
 * **Sound through Maxmod.** The songs are converted from their PSM files to Impulse Tracker modules when the pack is baked, and played by Maxmod, mixed at 27 kHz.
 
 ### Status
 
-Working: the menus, the menu demos, levels at 60 frames per second (tested mostly in Episode 1), music and sound effects, dying and reloading, level end statistics, cutscenes (at about 35 frames per second), bonus levels and moving on to the next level.
+Working: the menus, the menu demos, levels at 60 frames per second (tested mostly in Episode 1), music and sound effects, dying and reloading, level end statistics, cutscenes (at about 35 frames per second), bonus levels, moving on to the next level, and saving and loading games and settings.
 
 Not done yet:
 
-* **No saving.** Neither games nor settings are saved; the cartridge's SRAM is not used yet.
 * **Bonus levels run at about 12 frames per second.** Their floor is drawn pixel by pixel; the GBA's rotation backgrounds could do it in hardware, but don't fit these levels as they are.
 * Most worlds after Episode 1 haven't been played through on the GBA.
 
