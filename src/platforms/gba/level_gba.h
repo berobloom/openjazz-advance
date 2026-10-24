@@ -143,10 +143,10 @@ namespace gbaLevel {
 /// Wait until the last flip is on show
 void gbaWaitFlip ();
 
-/// Free the bitmap screen's pixels
-void gbaReleaseScreen ();
+/// Take the bitmap screen's pixels, if it has them, for use while nothing draws on it
+unsigned char* gbaTakeScreen ();
 
-/// Allocate the bitmap screen's pixels again
-bool gbaRestoreScreen ();
+/// Give the bitmap screen back its pixels, cleared, or new ones if pixels is nullptr
+bool gbaRestoreScreen (unsigned char* pixels);
 
 #endif

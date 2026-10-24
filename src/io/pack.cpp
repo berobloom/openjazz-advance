@@ -10,9 +10,10 @@
  * the GNU General Public License, version 2.0
  *
  * @par Description:
- * Reads the baked game data pack (see bakepack.h). Files in the pack are
- * opened as stdio streams, and the loaders use decoded blocks and stored file
- * data in place, so the pack must stay mapped for the life of the program.
+ * Reads the baked game data pack (see bakepack.h). File reads files in the
+ * pack straight from its stored segments, and the loaders use decoded blocks
+ * and stored file data in place, so the pack must stay mapped for the life of
+ * the program.
  *
  * Buffers handed out from the pack are read-only. The loaders free their
  * buffers with delete[], so delete ignores pointers into the pack. Surfaces
@@ -24,11 +25,6 @@
  *
  */
 
-
-// newlib only declares fopencookie() for GNU sources
-#ifndef _GNU_SOURCE
-	#define _GNU_SOURCE
-#endif
 
 #include "pack.h"
 #include "io/log.h"
@@ -46,12 +42,6 @@
 	#include <sys/mman.h>
 	#include <sys/stat.h>
 	#include <unistd.h>
-#endif
-
-#ifdef __NEWLIB__
-	typedef _off64_t pack_off_t;
-#else
-	typedef off64_t pack_off_t;
 #endif
 
 #ifdef __GBA__
@@ -72,12 +62,6 @@ namespace {
 
 	int holeReads = 0;
 	std::set<std::string>* missing = nullptr;
-
-	/// An open file in the pack
-	struct Stream {
-		const BakePackFile* file;
-		uint32_t pos;
-	};
 
 	bool load () {
 
@@ -127,72 +111,6 @@ namespace {
 
 	}
 
-	ssize_t streamRead (void* cookie, char* buffer, size_t size) {
-
-		Stream* stream = static_cast<Stream*>(cookie);
-		const BakePackFile* file = stream->file;
-
-		if (stream->pos >= file->size) return 0;
-		if (size > file->size - stream->pos) size = file->size - stream->pos;
-
-		uint32_t pos = stream->pos;
-		const BakePackSegment* segment = segments + file->firstSegment;
-		const BakePackSegment* last = segment + file->nSegments;
-
-		// Find the first segment that ends after pos
-		while (segment < last && segment->offset + segment->length <= pos) segment++;
-
-		/* Stop at the end of the segment rather than reading on into a hole.
-		   stdio reads ahead to fill its buffer, and only reaches a hole this
-		   way when a loader really asks for bytes in it. */
-		size_t count;
-
-		if (segment < last && segment->offset <= pos) {
-			count = std::min<size_t>(size, segment->offset + segment->length - pos);
-			memcpy(buffer, pack + segment->dataOffset + (pos - segment->offset), count);
-		} else {
-			// These bytes were replaced by a decoded block, so should not be needed
-			uint32_t holeEnd = segment < last ? segment->offset : file->size;
-			count = std::min<size_t>(size, holeEnd - pos);
-			memset(buffer, 0, count);
-			if (!holeReads++) LOG_WARN("Read from a hole in %s at %u", file->name, pos);
-		}
-
-		stream->pos += count;
-
-		return count;
-
-	}
-
-	int streamSeek (void* cookie, pack_off_t* offset, int whence) {
-
-		Stream* stream = static_cast<Stream*>(cookie);
-		pack_off_t pos;
-
-		switch (whence) {
-			case SEEK_SET: pos = *offset; break;
-			case SEEK_CUR: pos = stream->pos + *offset; break;
-			case SEEK_END: pos = stream->file->size + *offset; break;
-			default: return -1;
-		}
-
-		if (pos < 0) return -1;
-
-		stream->pos = pos;
-		*offset = pos;
-
-		return 0;
-
-	}
-
-	int streamClose (void* cookie) {
-
-		delete static_cast<Stream*>(cookie);
-
-		return 0;
-
-	}
-
 }
 
 
@@ -234,22 +152,36 @@ const BakePackFile* packFindFile (const char* name) {
 
 
 /**
- * Open a file in the pack for reading.
+ * Find the bytes of a file in the pack around a position.
+ *
+ * @param file The file
+ * @param pos A position before the end of the file
+ * @param start Set to the start of the span of the file around pos
+ * @param end Set to the end of the span
+ *
+ * @return The pack's copy of the span, or nullptr if the span is a hole: its
+ * bytes were replaced by decoded blocks, so loaders should not need them
  */
-FILE* packOpen (const BakePackFile* file) {
+const unsigned char* packSpan (const BakePackFile* file, uint32_t pos, uint32_t& start, uint32_t& end) {
 
-	cookie_io_functions_t functions = {streamRead, nullptr, streamSeek, streamClose};
+	const BakePackSegment* first = segments + file->firstSegment;
+	const BakePackSegment* last = first + file->nSegments;
 
-	FILE* stream = fopencookie(new Stream{file, 0}, "rb", functions);
+	// Find the first segment that ends after pos
+	const BakePackSegment* segment = std::upper_bound(first, last, pos,
+		[](uint32_t p, const BakePackSegment& s) { return p < s.offset + s.length; });
 
-#ifndef __NEWLIB__
-	/* glibc refills its buffer from a block boundary after seeking, reading
-	   bytes nobody asked for. Unbuffered, every read is a loader's own, so
-	   the count of reads from holes is exact. */
-	if (stream) setvbuf(stream, nullptr, _IONBF, 0);
-#endif
+	if (segment < last && segment->offset <= pos) {
+		start = segment->offset;
+		end = segment->offset + segment->length;
+		return pack + segment->dataOffset;
+	}
 
-	return stream;
+	start = segment > first ? segment[-1].offset + segment[-1].length : 0;
+	end = segment < last ? segment->offset : file->size;
+	if (!holeReads++) LOG_WARN("Read from a hole in %s at %u", file->name, pos);
+
+	return nullptr;
 
 }
 

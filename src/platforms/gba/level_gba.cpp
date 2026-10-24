@@ -143,6 +143,31 @@ namespace {
 
 	State* state = nullptr;
 
+	/* While a level shows, the bitmap screen's pixels hold the state and its
+	   largest tables. Keeping them out of the heap means the screen always
+	   gets them back, however fragmented the heap has become. */
+	unsigned char* screenMemory = nullptr;
+	unsigned int screenUsed;
+
+	/// Memory for the level display, from the screen's pixels while they last
+	void* take (unsigned int size) {
+		size = (size + 3) & ~3;
+
+		if (screenMemory && SCREEN_WIDTH_NATIVE * SCREEN_HEIGHT_NATIVE - screenUsed >= size) {
+			void* block = screenMemory + screenUsed;
+			screenUsed += size;
+			memset(block, 0, size);
+			return block;
+		}
+
+		return calloc(size, 1);
+	}
+
+	void give (void* block) {
+		unsigned char* bytes = static_cast<unsigned char*>(block);
+		if (!screenMemory || bytes < screenMemory || bytes >= screenMemory + screenUsed) free(block);
+	}
+
 
 	/// Whether a word has a zero byte
 	inline bool zeroByte (u32 v) {
@@ -531,12 +556,14 @@ void gbaLevel::enter (SDL_Surface* tileSet, int tiles, int key, int black) {
 
 	// Nothing draws on the bitmap screen meanwhile, and its memory is needed
 	gbaWaitFlip();
-	gbaReleaseScreen();
+	screenMemory = gbaTakeScreen();
+	screenUsed = 0;
 
-	state = static_cast<State*>(calloc(1, sizeof(State)));
+	state = static_cast<State*>(take(sizeof(State)));
 	if (!state) {
 		LOG_ERROR("No memory for the tiled level display");
-		gbaRestoreScreen();
+		gbaRestoreScreen(screenMemory);
+		screenMemory = nullptr;
 		return;
 	}
 
@@ -544,11 +571,11 @@ void gbaLevel::enter (SDL_Surface* tileSet, int tiles, int key, int black) {
 	state->tiles = tiles;
 	state->key = key;
 	state->black = black;
-	state->slotOf = static_cast<unsigned short*>(malloc(tiles * 32 * sizeof(unsigned short)));
-	state->slotKey = static_cast<unsigned short*>(malloc(SLOTS * sizeof(unsigned short)));
-	state->slotRefs = static_cast<unsigned short*>(calloc(SLOTS, sizeof(unsigned short)));
-	state->slotReleased = static_cast<unsigned int*>(calloc(SLOTS, sizeof(unsigned int)));
-	state->hud = static_cast<unsigned char*>(calloc(SCREEN_WIDTH_NATIVE * (SCREEN_HEIGHT_NATIVE - HUD_STORED_TOP), 1));
+	state->slotOf = static_cast<unsigned short*>(take(tiles * 32 * sizeof(unsigned short)));
+	state->hud = static_cast<unsigned char*>(take(SCREEN_WIDTH_NATIVE * (SCREEN_HEIGHT_NATIVE - HUD_STORED_TOP)));
+	state->slotReleased = static_cast<unsigned int*>(take(SLOTS * sizeof(unsigned int)));
+	state->slotKey = static_cast<unsigned short*>(take(SLOTS * sizeof(unsigned short)));
+	state->slotRefs = static_cast<unsigned short*>(take(SLOTS * sizeof(unsigned short)));
 
 	/* The panel's surface spans the whole 320x200 canvas, but only its bottom
 	   rows exist, and only the pixels shown, as on the video surface */
@@ -635,15 +662,16 @@ void gbaLevel::leave () {
 	SDL_FreeSurface(state->hudSurface);
 	SDL_FreeSurface(state->spriteSurface);
 	SDL_FreeSurface(state->overlaySurface);
-	free(state->slotOf);
-	free(state->slotKey);
-	free(state->slotRefs);
-	free(state->slotReleased);
-	free(state->hud);
-	free(state);
+	give(state->slotOf);
+	give(state->slotKey);
+	give(state->slotRefs);
+	give(state->slotReleased);
+	give(state->hud);
+	give(state);
 	state = nullptr;
 
-	if (!gbaRestoreScreen()) LOG_ERROR("No memory for the screen after the level");
+	if (!gbaRestoreScreen(screenMemory)) LOG_ERROR("No memory for the screen after the level");
+	screenMemory = nullptr;
 
 	// The bitmap screen returns at the next flip
 	REG_DISPCNT = MODE_4 | BG2_ON;

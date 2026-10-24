@@ -58,9 +58,16 @@ class File {
 		bool  forWriting;
 #if OJ_PACK
 		const BakePackFile* packed; ///< The file in the game data pack, if opened from there
+		uint32_t packPos;           ///< Read position in the packed file
+		const unsigned char* span;  ///< The pack's copy of the packed file's bytes spanStart to spanEnd
+		uint32_t spanStart, spanEnd;
+
+		int  packRead (void* buffer, int length);
 #endif
 
-		bool open (const char* path, const char* name, bool write);
+		bool open      (const char* path, const char* name, bool write);
+		int  getByte   ();
+		int  readBytes (void* buffer, int length);
 
 	public:
 		File                           (const char* name, int pathType, bool write = false);

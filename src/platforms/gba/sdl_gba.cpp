@@ -283,17 +283,24 @@ void gbaWaitFlip () {
 	while (flipPending) VBlankIntrWait();
 }
 
-void gbaReleaseScreen () {
-	if (!screen || !screen->pixels) return;
+unsigned char* gbaTakeScreen () {
+	if (!screen) return nullptr;
 
-	free(screen->pixels);
+	unsigned char* pixels = static_cast<unsigned char*>(screen->pixels);
 	screen->pixels = nullptr;
+
+	return pixels;
 }
 
-bool gbaRestoreScreen () {
+bool gbaRestoreScreen (unsigned char* pixels) {
 	if (!screen || screen->pixels) return true;
 
-	screen->pixels = calloc(SCREEN_W * SCREEN_H, 1);
+	if (pixels) {
+		memset(pixels, 0, SCREEN_W * SCREEN_H);
+		screen->pixels = pixels;
+	} else {
+		screen->pixels = calloc(SCREEN_W * SCREEN_H, 1);
+	}
 
 	return screen->pixels;
 }

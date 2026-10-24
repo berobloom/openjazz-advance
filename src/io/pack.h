@@ -17,11 +17,9 @@
 
 #include "io/bakepack.h"
 
-#include <stdio.h>
-
 bool                 packActive      ();
 const BakePackFile*  packFindFile    (const char* name);
-FILE*                packOpen        (const BakePackFile* file);
+const unsigned char* packSpan        (const BakePackFile* file, uint32_t pos, uint32_t& start, uint32_t& end);
 const BakePackEntry* packFindDecoded (const BakePackFile* file, int offset, BakeKind kind, int length, int param);
 const unsigned char* packData        (uint32_t offset);
 const unsigned char* packFindStored  (const BakePackFile* file, int offset, int length);

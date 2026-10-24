@@ -61,12 +61,13 @@ File::File (const char* name, int pathType, bool write) :
 
 #if OJ_PACK
 	packed = nullptr;
+	packPos = spanStart = spanEnd = 0;
+	span = nullptr;
 
 	if (!write && (pathType & PATH_TYPE_GAME)) {
 		packed = packFindFile(name);
 
 		if (packed) {
-			file = packOpen(packed);
 			filePath = createString("pack/", name);
 			LOG_DEBUG("Opened file: %s", filePath);
 			return;
@@ -113,7 +114,7 @@ File::File (const char* name, int pathType, bool write) :
  */
 File::~File () {
 
-	fclose(file);
+	if (file) fclose(file);
 
 	LOG_TRACE("Closed file: %s", filePath);
 
@@ -236,6 +237,10 @@ int File::getSize () {
 
 	int pos, size;
 
+#if OJ_PACK
+	if (packed) return packed->size;
+#endif
+
 	pos = ftell(file);
 
 	fseek(file, 0, SEEK_END);
@@ -256,6 +261,10 @@ int File::getSize () {
  */
 int File::tell () {
 
+#if OJ_PACK
+	if (packed) return packPos;
+#endif
+
 	return ftell(file);
 
 }
@@ -269,11 +278,23 @@ int File::tell () {
  */
 void File::seek (int offset, bool reset) {
 
-	fseek(file, offset, reset ? SEEK_SET: SEEK_CUR);
+	seek(offset, reset ? SEEK_SET: SEEK_CUR);
 
 }
 
 int File::seek (int offset, int origin) {
+#if OJ_PACK
+	if (packed) {
+		int pos = offset;
+		if (origin == SEEK_CUR) pos += packPos;
+		else if (origin == SEEK_END) pos += packed->size;
+
+		if (pos < 0) return -1;
+
+		packPos = pos;
+		return 0;
+	}
+#endif
 	return fseek(file, offset, origin);
 }
 
@@ -281,7 +302,85 @@ int File::read (void *buffer, int size, int count) {
 #if OJ_DEV_HOOKS
 	devRawRead(filePath, tell(), size * count);
 #endif
-	return fread(buffer, size, count, file);
+	if (size <= 0) return 0;
+	return readBytes(buffer, size * count) / size;
+}
+
+
+#if OJ_PACK
+/**
+ * Read from the packed file.
+ *
+ * @param buffer Buffer to fill
+ * @param length Number of bytes to read
+ *
+ * @return Number of bytes read, fewer at the end of the file
+ */
+int File::packRead (void* buffer, int length) {
+
+	unsigned char* out = static_cast<unsigned char*>(buffer);
+	int count = 0;
+
+	while (count < length && packPos < packed->size) {
+
+		if (packPos < spanStart || packPos >= spanEnd)
+			span = packSpan(packed, packPos, spanStart, spanEnd);
+
+		int amount = std::min<uint32_t>(length - count, spanEnd - packPos);
+
+		if (span) {
+			memcpy(out + count, span + (packPos - spanStart), amount);
+		} else {
+			// A hole reads as zeros. Forget it, so that each read from it is reported.
+			memset(out + count, 0, amount);
+			spanStart = spanEnd = 0;
+		}
+
+		count += amount;
+		packPos += amount;
+
+	}
+
+	return count;
+
+}
+#endif
+
+
+/**
+ * Read one byte from the file.
+ *
+ * @return The byte, or EOF
+ */
+int File::getByte () {
+
+#if OJ_PACK
+	if (packed) {
+		if (packPos >= spanStart && packPos < spanEnd) return span[packPos++ - spanStart];
+
+		unsigned char byte;
+		return packRead(&byte, 1) ? byte: EOF;
+	}
+#endif
+
+	return fgetc(file);
+
+}
+
+
+/**
+ * Read bytes from the file.
+ *
+ * @return Number of bytes read
+ */
+int File::readBytes (void* buffer, int length) {
+
+#if OJ_PACK
+	if (packed) return packRead(buffer, length);
+#endif
+
+	return fread(buffer, 1, length, file);
+
 }
 
 
@@ -296,7 +395,7 @@ unsigned char File::loadChar () {
 	devRawRead(filePath, tell(), 1);
 #endif
 
-	return fgetc(file);
+	return getByte();
 
 }
 
@@ -321,8 +420,8 @@ unsigned short int File::loadShort () {
 	devRawRead(filePath, tell(), 2);
 #endif
 
-	val = fgetc(file);
-	val += fgetc(file) << 8;
+	val = getByte();
+	val += getByte() << 8;
 
 	return val;
 
@@ -374,10 +473,10 @@ signed int File::loadInt () {
 	devRawRead(filePath, tell(), 4);
 #endif
 
-	val = fgetc(file);
-	val += fgetc(file) << 8;
-	val += fgetc(file) << 16;
-	val += fgetc(file) << 24;
+	val = getByte();
+	val += getByte() << 8;
+	val += getByte() << 16;
+	val += getByte() << 24;
 
 	return *((signed int *)&val);
 
@@ -408,7 +507,7 @@ char * File::loadString (int length) {
 	devRawRead(filePath, tell(), length);
 #endif
 	char *string = new char[length + 1];
-	int res = fread(string, 1, length, file);
+	int res = readBytes(string, length);
 
 	if (res != length)
 		LOG_ERROR("Could not read whole string (%d of %d bytes read)", res, length);
@@ -470,7 +569,7 @@ unsigned char * File::loadBlock (int length) {
 	devRawRead(filePath, tell(), length);
 #endif
 
-	int res = fread(buffer, 1, length, file);
+	int res = readBytes(buffer, length);
 
 	if (res != length)
 		LOG_ERROR("Could not read whole block (%d of %d bytes read)", res, length);
@@ -591,7 +690,7 @@ void File::loadRLE (unsigned char* buffer, int length, bool checkSize) {
 		} else if (amount) { // copy
 			if (pos + amount >= length) break;
 
-			fread(buffer + pos, 1, amount, file);
+			readBytes(buffer + pos, amount);
 			pos += amount;
 		} else { // end marker
 			buffer[pos++] = loadChar();
@@ -627,10 +726,10 @@ void File::skipRLE () {
 
 	int next;
 
-	next = fgetc(file);
-	next += fgetc(file) << 8;
+	next = getByte();
+	next += getByte() << 8;
 
-	fseek(file, next, SEEK_CUR);
+	seek(next, false);
 
 }
 
@@ -834,7 +933,7 @@ unsigned char* File::loadPixels (int length, int key) {
 	// Four pixels are packed into the lower end of each byte
 	for (count = 0; count < length; count++) {
 
-		if (!(count & 3)) mask = fgetc(file);
+		if (!(count & 3)) mask = getByte();
 		pixels[count] = (mask >> (count & 3)) & 1;
 
 	}
@@ -858,7 +957,7 @@ unsigned char* File::loadPixels (int length, int key) {
 
 			// The unmasked portions are transparent, so no masked
 			// portion should be transparent.
-			while (pixels[count] == key) pixels[count] = fgetc(file);
+			while (pixels[count] == key) pixels[count] = getByte();
 
 		}
 

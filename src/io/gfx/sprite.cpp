@@ -27,6 +27,8 @@
 #include "video.h"
 #include "sprite.h"
 
+#include <memory>
+
 
 /**
  * Create a sprite.
@@ -268,6 +270,22 @@ void Sprite::drawScaled (int x, int y, fixed scale) {
 	int endColumn = canvasColumns(canvas, firstDstX + width - firstSrcX);
 	int endRow = canvasRows(canvas, firstDstY + height - firstSrcY);
 
+	if (endColumn <= firstColumn) {
+		if (SDL_MUSTLOCK(canvas)) SDL_UnlockSurface(canvas);
+		return;
+	}
+
+	// The source column depends only on the canvas column, so divide once per column
+	std::unique_ptr<int[]> srcColumns(new int[endColumn - firstColumn]);
+
+	for (int column = firstColumn; column < endColumn; column++) {
+
+		dstX = canvasColumnOf(canvas, column);
+		srcX = firstSrcX + dstX - firstDstX;
+		srcColumns[column - firstColumn] = DIV(srcX, scale);
+
+	}
+
 	for (int row = canvasRows(canvas, firstDstY); row < endRow; row++) {
 
 		dstY = canvasRowOf(canvas, row);
@@ -278,10 +296,7 @@ void Sprite::drawScaled (int x, int y, fixed scale) {
 
 		for (int column = firstColumn; column < endColumn; column++) {
 
-			dstX = canvasColumnOf(canvas, column);
-			srcX = firstSrcX + dstX - firstDstX;
-
-			unsigned char pixel = srcRow[DIV(srcX, scale)];
+			unsigned char pixel = srcRow[srcColumns[column - firstColumn]];
 			if (pixel != key) dstRow[column] = pixel;
 
 		}
