@@ -602,7 +602,10 @@ void Video::changePalette (SDL_Color *palette, unsigned char first, unsigned int
  * @param surface Surface with a modified palette
  */
 void Video::restoreSurfacePalette (SDL_Surface* surface) {
-#if OJ_SDL3
+#ifdef __GBA__
+	// The logical palette is the identity, which surfaces can return to at once
+	SDL_GBA_ResetPalette(surface);
+#elif OJ_SDL3
 	setSurfacePalette(surface, logicalPalette->colors, 0, MAX_PALETTE_COLORS);
 #else
 	setSurfacePalette(surface, logicalPalette, 0, MAX_PALETTE_COLORS);

@@ -46,6 +46,9 @@ inline int scaledRows (int y) { int r = y % 5; return ((y / 5) << 2) + r - (r >=
 // Cutscenes do not fit in RAM yet
 #define NO_STARTUP_SCENE
 
+// Levels use the tile and sprite hardware at the native resolution (see gba/level_gba.h)
+#define OJ_TILED_LEVEL
+
 // Hot loops run from IWRAM as ARM code
 #define OJ_FAST_CODE __attribute__((section(".iwram.oj"), target("arm"), noinline))
 

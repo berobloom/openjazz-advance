@@ -35,6 +35,9 @@
 #include "io/file.h"
 #include "io/gfx/font.h"
 #include "io/gfx/video.h"
+#ifdef OJ_TILED_LEVEL
+	#include "platforms/gba/level_gba.h"
+#endif
 #include "io/sound.h"
 #include "loop.h"
 #include "util.h"
@@ -117,6 +120,10 @@ int JJ1DemoLevel::play () {
 	steps = 0;
 
 	video.setPalette(palette);
+
+#ifdef OJ_TILED_LEVEL
+	gbaLevel::Scope tiled(getTileSet(), getTileSet()->h / TTOI(1), TKEY, LEVEL_BLACK);
+#endif
 
 	playMusic(musicFile);
 

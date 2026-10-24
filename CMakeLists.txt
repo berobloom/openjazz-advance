@@ -413,6 +413,8 @@ elseif(GBA)
 		src/platforms/gba/pack.S
 		src/platforms/gba/blit_gba.h
 		src/platforms/gba/blit_gba.iwram.cpp
+		src/platforms/gba/level_gba.cpp
+		src/platforms/gba/level_gba.h
 		src/platforms/gba/sdl/SDL.h
 		src/platforms/gba/sdl_gba.cpp
 		src/platforms/gba/sound_gba.cpp)
@@ -430,6 +432,34 @@ elseif(GBA)
 		target_link_options(OpenJazz PRIVATE
 			-Wl,--wrap=malloc,--wrap=free,--wrap=realloc,--wrap=calloc)
 	endif()
+	# Place some library code and data better than devkitARM's linker script
+	# does, with a copy of the script that gcc finds first.
+	# The stack and the fast code need the 32 KB IWRAM, so the C library's
+	# initialised data (6 KB of it, mostly file handles) goes in EWRAM instead.
+	set(GBA_LD_DIR "${CMAKE_CURRENT_BINARY_DIR}/gba-ld")
+	file(READ "${DEVKITPRO}/devkitARM/arm-none-eabi/lib/gba_cart.ld" GBA_LD)
+	# (libg.a is the C library gcc links when building with -g)
+	set(GBA_LD_EXCLUDE "")
+	set(GBA_LD_EWRAM "")
+	foreach(LIB libc.a libg.a libsysbase.a)
+		string(APPEND GBA_LD_EXCLUDE " *${LIB}:*")
+		string(APPEND GBA_LD_EWRAM "\t\t*${LIB}:*(.data*)\n")
+	endforeach()
+	string(REPLACE "\t\t*(.data*)\n" "\t\t*(EXCLUDE_FILE (${GBA_LD_EXCLUDE} ) .data*)\n" GBA_LD "${GBA_LD}")
+	string(REPLACE "\t\t*(.ewram*)\n" "\t\t*(.ewram*)\n${GBA_LD_EWRAM}" GBA_LD "${GBA_LD}")
+	# The game divides often, and the division routines are ARM code, which runs
+	# slowly from ROM, so they go in IWRAM
+	set(GBA_LD_EXCLUDE "")
+	set(GBA_LD_IWRAM "")
+	foreach(OBJ _udivsi3.o _divsi3.o _dvmd_tls.o)
+		string(APPEND GBA_LD_EXCLUDE " *libgcc.a:${OBJ}")
+		string(APPEND GBA_LD_IWRAM "\t\t*libgcc.a:${OBJ}(.text*)\n")
+	endforeach()
+	string(REPLACE "\t\t*(EXCLUDE_FILE (*.iwram*) .text*)\n" "\t\t*(EXCLUDE_FILE (*.iwram*${GBA_LD_EXCLUDE} ) .text*)\n" GBA_LD "${GBA_LD}")
+	string(REPLACE "\t\t*(.iwram .iwram*)\n" "\t\t*(.iwram .iwram*)\n${GBA_LD_IWRAM}" GBA_LD "${GBA_LD}")
+	file(WRITE "${GBA_LD_DIR}/gba_cart.ld" "${GBA_LD}")
+	target_link_options(OpenJazz PRIVATE "-B${GBA_LD_DIR}/")
+	set_property(TARGET OpenJazz APPEND PROPERTY LINK_DEPENDS "${GBA_LD_DIR}/gba_cart.ld")
 	gba_create_rom(OpenJazz TITLE "OPENJAZZ" GAMECODE "COJE" MAKERCODE "00")
 elseif(WII)
 	target_sources(OpenJazz PRIVATE

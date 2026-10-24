@@ -35,6 +35,7 @@
 #include "level/level.h"
 #include "io/gfx/anim.h"
 #include "OpenJazz.h"
+#include "platforms/platforms.h"
 
 #include <vector>
 
@@ -272,6 +273,13 @@ class JJ1Level : public Level {
 		int  step ();
 		void draw ();
 		bool handleSave (int slot) override;
+
+		/// Level tiles, for drawing with tile hardware
+		SDL_Surface* getTileSet () { return tileSet; }
+
+#ifdef OJ_TILED_LEVEL
+		void setTiledCells (int vX, int vY);
+#endif
 
 	public:
 		JJ1EventPath path[PATHS]; ///< Pre-defined event movement paths

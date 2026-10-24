@@ -28,6 +28,7 @@
 #include <SDL.h>
 
 #include "blit_gba.h"
+#include "level_gba.h"
 #include "platforms/gba.h"
 
 #ifdef OJ_GBA_HEAP_TRACE
@@ -54,11 +55,11 @@
 namespace {
 
 	SDL_Surface* screen = nullptr;
-	EWRAM_BSS SDL_Color physPalette[256]; ///< Physical palette as given, for SDL_MapRGB
-	u16 hwPalette[256]; ///< Physical palette in BGR555
+	EWRAM_BSS __attribute__((aligned(4))) SDL_Color physPalette[256]; ///< Physical palette as given, for SDL_MapRGB
+	EWRAM_BSS u16 hwPalette[256]; ///< Physical palette in BGR555
 	bool hwPaletteDirty = false;
 
-	u16 flipPalette[256]; ///< Palette to show with the pending page
+	EWRAM_BSS u16 flipPalette[256]; ///< Palette to show with the pending page
 	volatile bool flipPaletteDirty = false;
 	volatile bool flipPending = false; ///< A drawn page waits for VBlank
 
@@ -93,14 +94,20 @@ namespace {
 	u16 pressedThisFrame = 0;
 
 	void onVBlank () {
+		bool level = gbaLevel::active();
+		bool committed = flipPending;
+
 		if (flipPending) {
 			if (flipPaletteDirty) {
 				dmaCopy(flipPalette, BG_PALETTE, sizeof(flipPalette));
+				if (level) dmaCopy(flipPalette, SPRITE_PALETTE, sizeof(flipPalette));
 				flipPaletteDirty = false;
 			}
-			REG_DISPCNT ^= BACKBUFFER;
-			flipPending = false;
+			if (!level) REG_DISPCNT ^= BACKBUFFER;
 		}
+
+		if (level) gbaLevel::vblank(committed);
+		flipPending = false;
 
 		u16 held = ~REG_KEYINPUT & 0x3FF;
 		if (held == sampledButtons) return;
@@ -147,6 +154,7 @@ namespace {
 		s->formatData.BytesPerPixel = 1;
 		s->clip_rect.w = width;
 		s->clip_rect.h = height;
+		s->bounds = s->clip_rect;
 
 		if (pixels) {
 			s->pixels = pixels;
@@ -271,17 +279,39 @@ SDL_Rect** SDL_ListModes (SDL_PixelFormat* format, Uint32 flags) {
 	return modes;
 }
 
+void gbaWaitFlip () {
+	while (flipPending) VBlankIntrWait();
+}
+
+void gbaReleaseScreen () {
+	if (!screen || !screen->pixels) return;
+
+	free(screen->pixels);
+	screen->pixels = nullptr;
+}
+
+bool gbaRestoreScreen () {
+	if (!screen || screen->pixels) return true;
+
+	screen->pixels = calloc(SCREEN_W * SCREEN_H, 1);
+
+	return screen->pixels;
+}
+
 int SDL_Flip (SDL_Surface* surface) {
 	if (surface != screen) return -1;
 
 	gbaCheckStack();
 
 	// The page drawn last time must be on show before drawing the other one
-	while (flipPending) VBlankIntrWait();
+	gbaWaitFlip();
 
-	u16* page = reinterpret_cast<u16*>((REG_DISPCNT & BACKBUFFER)? VRAM: VRAM + 0xA000);
-
-	DMA3COPY(screen->pixels, page, DMA32 | (SCREEN_W * SCREEN_H / 4));
+	if (gbaLevel::active()) {
+		gbaLevel::commit(hwPalette);
+	} else {
+		u16* page = reinterpret_cast<u16*>((REG_DISPCNT & BACKBUFFER)? VRAM: VRAM + 0xA000);
+		DMA3COPY(screen->pixels, page, DMA32 | (SCREEN_W * SCREEN_H / 4));
+	}
 
 	if (hwPaletteDirty) {
 		memcpy(flipPalette, hwPalette, sizeof(flipPalette));
@@ -329,7 +359,7 @@ void SDL_FreeSurface (SDL_Surface* surface) {
 	if (!surface || surface == screen) return;
 
 	if (!(surface->flags & SDL_PREALLOC)) free(surface->pixels);
-	free(surface->remap);
+	free(surface->remapTable);
 	free(surface);
 }
 
@@ -342,6 +372,21 @@ void SDL_UnlockSurface (SDL_Surface* surface) {
 	(void)surface;
 }
 
+/// Set physical palette colours from whole words, ignoring the unused byte; whether any changed
+static OJ_FAST_CODE bool setPhysical (const u32* colors, int first, int ncolors) {
+	u32* shown = reinterpret_cast<u32*>(physPalette + first);
+	u16* hw = hwPalette + first;
+	bool changed = false;
+	for (int i = 0; i < ncolors; i++) {
+		u32 c = colors[i];
+		if (!((c ^ shown[i]) & 0xFFFFFF)) continue;
+		shown[i] = c;
+		hw[i] = RGB5((c >> 3) & 31, (c >> 11) & 31, (c >> 19) & 31);
+		changed = true;
+	}
+	return changed;
+}
+
 int SDL_SetPalette (SDL_Surface* surface, int flags, const SDL_Color* colors, int first, int ncolors) {
 	if (!surface) return 0;
 
@@ -350,39 +395,65 @@ int SDL_SetPalette (SDL_Surface* surface, int flags, const SDL_Color* colors, in
 	if (surface == screen) {
 		// The video surface's logical palette is always the identity
 		if (flags & SDL_PHYSPAL) {
-			for (int i = 0; i < ncolors; i++) {
-				const SDL_Color& c = colors[i];
-				physPalette[first + i] = c;
-				hwPalette[first + i] = RGB5(c.r >> 3, c.g >> 3, c.b >> 3);
+			// Palette effects set every colour each frame, but change few
+			if (!(reinterpret_cast<uintptr_t>(colors) & 3)) {
+				if (setPhysical(reinterpret_cast<const u32*>(colors), first, ncolors)) hwPaletteDirty = true;
+			} else {
+				for (int i = 0; i < ncolors; i++) {
+					const SDL_Color& c = colors[i];
+					SDL_Color& old = physPalette[first + i];
+					if (c.r == old.r && c.g == old.g && c.b == old.b) continue;
+					old = c;
+					hwPalette[first + i] = RGB5(c.r >> 3, c.g >> 3, c.b >> 3);
+					hwPaletteDirty = true;
+				}
 			}
-			hwPaletteDirty = true;
 		}
 		return 1;
 	}
 
 	if (!(flags & SDL_LOGPAL)) return 1;
 
-	if (!surface->remap) {
+	if (!surface->remapTable) {
 		bool identity = true;
 		for (int i = 0; i < ncolors && identity; i++)
 			identity = colors[i].r == first + i;
 		if (identity) return 1;
 
-		surface->remap = static_cast<Uint8*>(malloc(256));
-		if (!surface->remap) return 0;
-		for (int i = 0; i < 256; i++) surface->remap[i] = i;
+		surface->remapTable = static_cast<Uint8*>(malloc(256));
+		if (!surface->remapTable) return 0;
+		for (int i = 0; i < 256; i++) surface->remapTable[i] = i;
 	}
 
-	for (int i = 0; i < ncolors; i++) surface->remap[first + i] = colors[i].r;
-
-	// Drop the table once it is back to the identity, so blits take the fast path
-	for (int i = 0; i < 256; i++) {
-		if (surface->remap[i] != i) return 1;
+	// Sprites flash and change colour every frame, so keep track of the changes alone
+	Uint8* table = surface->remapTable;
+	int changed = surface->remapChanged;
+	Uint32 hash = surface->remapHash;
+	for (int i = 0; i < ncolors; i++) {
+		int index = first + i;
+		int value = colors[i].r;
+		int old = table[index];
+		if (value == old) continue;
+		changed += (value != index) - (old != index);
+		hash += static_cast<Uint32>(value - old) * (((index + 1) * 0x9E3779B1u) | 1);
+		table[index] = value;
 	}
-	free(surface->remap);
-	surface->remap = nullptr;
+	surface->remapChanged = changed;
+	surface->remapHash = hash;
+
+	// Blits take the fast path while the table is the identity
+	surface->remap = changed? table: nullptr;
 
 	return 1;
+}
+
+void SDL_GBA_ResetPalette (SDL_Surface* surface) {
+	if (!surface || !surface->remapChanged) return;
+
+	for (int i = 0; i < 256; i++) surface->remapTable[i] = i;
+	surface->remap = nullptr;
+	surface->remapChanged = 0;
+	surface->remapHash = 0;
 }
 
 int SDL_SetColors (SDL_Surface* surface, const SDL_Color* colors, int first, int ncolors) {
@@ -400,14 +471,12 @@ int SDL_SetColorKey (SDL_Surface* surface, Uint32 flag, Uint32 key) {
 }
 
 SDL_bool SDL_SetClipRect (SDL_Surface* surface, const SDL_Rect* rect) {
-	SDL_Rect full = {0, 0, static_cast<Uint16>(surface->w), static_cast<Uint16>(surface->h)};
-
 	if (!rect) {
-		surface->clip_rect = full;
+		surface->clip_rect = surface->bounds;
 		return SDL_TRUE;
 	}
 
-	return intersect(*rect, full, surface->clip_rect)? SDL_TRUE: SDL_FALSE;
+	return intersect(*rect, surface->bounds, surface->clip_rect)? SDL_TRUE: SDL_FALSE;
 }
 
 int SDL_BlitSurface (SDL_Surface* src, SDL_Rect* srcrect, SDL_Surface* dst, SDL_Rect* dstrect) {
@@ -437,6 +506,16 @@ int SDL_BlitSurface (SDL_Surface* src, SDL_Rect* srcrect, SDL_Surface* dst, SDL_
 		dy += s.y - srcrect->y;
 	}
 
+	const Uint8* sp = static_cast<const Uint8*>(src->pixels) + s.y * src->pitch + s.x;
+	int key = (src->flags & SDL_SRCCOLORKEY)? static_cast<int>(src->format->colorkey & 0xFF): -1;
+
+	// Hardware sprites clip themselves, so the image stays the same at the edges
+	if (dst->kind == SDL_GBA_SPRITES) {
+		gbaLevel::sprite(sp, src->pitch, s.w, s.h, dx, dy, key, src->remap, src->remapHash);
+		if (dstrect) *dstrect = {static_cast<Sint16>(dx), static_cast<Sint16>(dy), s.w, s.h};
+		return 0;
+	}
+
 	SDL_Rect d = {static_cast<Sint16>(dx), static_cast<Sint16>(dy), s.w, s.h};
 	SDL_Rect c;
 	if (!intersect(d, dst->clip_rect, c)) {
@@ -446,15 +525,13 @@ int SDL_BlitSurface (SDL_Surface* src, SDL_Rect* srcrect, SDL_Surface* dst, SDL_
 		return 0;
 	}
 
-	s.x += c.x - d.x;
-	s.y += c.y - d.y;
-
 	if (dstrect) *dstrect = c;
 
-	const Uint8* sp = static_cast<const Uint8*>(src->pixels) + s.y * src->pitch + s.x;
-	int key = (src->flags & SDL_SRCCOLORKEY)? static_cast<int>(src->format->colorkey & 0xFF): -1;
+	sp += (c.y - d.y) * src->pitch + (c.x - d.x);
 
-	if (isScaled(dst)) {
+	if (dst->kind == SDL_GBA_OVERLAY) {
+		gbaLevel::overlayBlit(sp, src->pitch, c.x, c.y, c.w, c.h, key, src->remap);
+	} else if (isScaled(dst)) {
 		gbaBlitScaled(sp, src->pitch, static_cast<Uint8*>(dst->pixels), dst->pitch,
 			c.x, c.y, c.w, c.h, key, src->remap);
 	} else {
@@ -477,6 +554,12 @@ int SDL_FillRect (SDL_Surface* dst, SDL_Rect* rect, Uint32 color) {
 	} else {
 		c = dst->clip_rect;
 	}
+
+	if (dst->kind == SDL_GBA_OVERLAY) {
+		gbaLevel::overlayFill(c.x, c.y, c.w, c.h, color);
+		return 0;
+	}
+	if (dst->kind == SDL_GBA_SPRITES) return 0;
 
 	int x0 = c.x, x1 = c.x + c.w, y0 = c.y, y1 = c.y + c.h;
 	if (isScaled(dst)) {

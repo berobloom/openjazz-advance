@@ -49,6 +49,9 @@
 #include "io/gfx/paletteeffects.h"
 #include "io/gfx/sprite.h"
 #include "io/gfx/video.h"
+#ifdef OJ_TILED_LEVEL
+	#include "platforms/gba/level_gba.h"
+#endif
 #include "io/sound.h"
 #include "io/log.h"
 #include "util.h"
@@ -836,6 +839,10 @@ int JJ1Level::play () {
 
 	video.setPalette(palette);
 
+#ifdef OJ_TILED_LEVEL
+	gbaLevel::Scope tiled(tileSet, tileSet->h / TTOI(1), TKEY, LEVEL_BLACK);
+#endif
+
 	playMusic(musicFile);
 
 	while (true) {
@@ -845,6 +852,11 @@ int JJ1Level::play () {
 
 		// Check if level has been won
 		if (game && returnTime && (ticks > returnTime)) {
+
+#ifdef OJ_TILED_LEVEL
+			// Scenes and the bonus level draw on the bitmap screen
+			gbaLevel::leave();
+#endif
 
 			// Play "Level end" cutscene
 			// if available and secret level 2 was not found (FIXME: check JJ1, if true)

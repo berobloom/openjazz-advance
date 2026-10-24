@@ -37,7 +37,12 @@
 #include "io/controls.h"
 #include "io/gfx/font.h"
 #include "io/gfx/video.h"
+#ifdef OJ_TILED_LEVEL
+	#include "platforms/gba/level_gba.h"
+#endif
 #include "util.h"
+
+#include <algorithm>
 
 
 /**
@@ -65,14 +70,21 @@ int JJ1Level::step () {
 	localPlayer->getJJ1LevelPlayer()->applyCheats();
 #endif
 
-	// Search for active events
-	for (y = FTOT(viewY) - 5; y < ITOT(FTOI(viewY) + viewH) + 5; y++) {
+	// Search for active events, within the level
+	int firstX = std::max(FTOT(viewX) - 5, 0);
+	int lastX = std::min(ITOT(FTOI(viewX) + canvasW) + 5, LW);
+	int firstY = std::max(FTOT(viewY) - 5, 0);
+	int lastY = std::min(ITOT(FTOI(viewY) + viewH) + 5, LH);
+	auto difficulty = +getDifficulty();
 
-		for (x = FTOT(viewX) - 5; x < ITOT(FTOI(viewX) + canvasW) + 5; x++) {
+	for (y = firstY; y < lastY; y++) {
 
-			if ((x >= 0) && (y >= 0) && (x < LW) && (y < LH) &&
-				grid[x][y].event() && (grid[x][y].event() < 121) &&
-				(+eventSet[grid[x][y].event()].difficulty <= +getDifficulty())) {
+		for (x = firstX; x < lastX; x++) {
+
+			int gridEvent = grid[x][y].event();
+
+			if (gridEvent && (gridEvent < 121) &&
+				(+eventSet[gridEvent].difficulty <= difficulty)) {
 
 				event = events;
 
@@ -217,7 +229,9 @@ int JJ1Level::step () {
  */
 void JJ1Level::draw () {
 
+#ifndef OJ_TILED_LEVEL
 	GridElement *ge;
+#endif
 	SDL_Rect src, dst;
 	int viewH = canvasH;
 	int vX, vY;
@@ -242,6 +256,10 @@ void JJ1Level::draw () {
 		viewH = canvasH - 33;
 	}
 
+#ifdef OJ_TILED_LEVEL
+	viewH = canvasH - gbaLevel::HUD_HEIGHT;
+#endif
+
 	// Ensure the new viewport is within the level
 	if (FTOI(viewX) + canvasW >= TTOI(LW)) viewX = ITOF(TTOI(LW) - canvasW);
 	if (viewX < 0) viewX = 0;
@@ -264,6 +282,33 @@ void JJ1Level::draw () {
 	src.x = 0;
 
 
+#ifdef OJ_TILED_LEVEL
+	// The hardware draws the tiles; tell it which go where
+	gbaLevel::beginFrame(vX, vY);
+
+	if (sky) {
+
+		gbaLevel::setSky(156, ((canvasH - 34) / 100) + 1);
+
+		// The sun / moon / etc. is a sprite behind the background tiles
+		if (skyOrb) {
+
+			canvas = gbaLevel::spriteLayer();
+			gbaLevel::setSpritePriority(3);
+			dst.x = ((canvasW * 4) / 5) - (vX & 3);
+			dst.y = ((canvasH - 33) * 3) / 25;
+			src.y = TTOI(skyOrb + (vX & 3));
+			SDL_BlitSurface(tileSet, &src, canvas, &dst);
+			gbaLevel::setSpritePriority(2);
+
+		}
+
+	} else gbaLevel::setSky(127, 0);
+
+	setTiledCells(vX, vY);
+
+	canvas = gbaLevel::spriteLayer();
+#else
 	// If there is a sky, draw it
 	if (sky) {
 
@@ -341,6 +386,9 @@ void JJ1Level::draw () {
 	}
 
 
+#endif
+
+
 	// Show active events
 	if (events) events->draw(ticks, change);
 
@@ -353,7 +401,9 @@ void JJ1Level::draw () {
 	if (bullets) bullets->draw(change);
 
 
-
+#ifdef OJ_TILED_LEVEL
+	canvas = gbaLevel::overlay();
+#else
 	// Show foreground tiles
 
 	for (y = 0; y <= ITOT(viewH - 1) + 1; y++) {
@@ -403,6 +453,7 @@ void JJ1Level::draw () {
 		}
 
 	}
+#endif
 
 	// FIXME: Temporary lines showing the water level
 	video.drawRect(0, FTOI(waterLevel - viewY), canvasW, 2, 24);
@@ -417,6 +468,45 @@ void JJ1Level::draw () {
 	// If this is a competitive game, draw the score
 	if (multiplayer) game->getMode()->drawScore(font);
 
+
+	// Move the health bar towards the player's energy
+	x = localPlayer->getJJ1LevelPlayer()->getEnergy();
+	y = (ticks - prevTicks) * 40;
+
+	if (FTOI(energyBar) < x) {
+		// increase
+
+		if (ITOF(x) - energyBar < y) energyBar = ITOF(x);
+		else energyBar += y;
+
+	} else if (FTOI(energyBar) > x) {
+		// decrease
+
+		if (energyBar - ITOF(x) < y) energyBar = ITOF(x);
+		else energyBar -= y;
+
+	}
+
+
+#ifdef OJ_TILED_LEVEL
+	// The panel stays in VRAM, so only the parts that change are drawn again
+	int energy = localPlayer->getJJ1LevelPlayer()->getEnergy();
+	const gbaLevel::HudField hudFields[] = {
+		{localPlayer->getScore(), 16, 88},
+		{(endTime > ticks)? static_cast<int>(endTime - ticks) / 100: 0, 100, 152},
+		{localPlayer->getLives(), 104, 128},
+		{worldNum, 168, 200},
+		{levelNum, 168, 200},
+		{localPlayer->getAmmoType(), 212, 256},
+		{localPlayer->getAmmo(), 212, 256},
+		{ammoType, 244, 320},
+		{ammoOffset, 244, 320},
+		{FTOI(energyBar), 16, 88},
+		{energy, 16, 88},
+		{(energy <= 20)? static_cast<int>(((ticks / 75) * 4) & 15): 0, 16, 88}
+	};
+	if (!gbaLevel::beginHud(hudFields, sizeof(hudFields) / sizeof(hudFields[0]))) return;
+#endif
 
 	// Show panel
 
@@ -556,21 +646,6 @@ void JJ1Level::draw () {
 
 	dst.x = 20;
 	x = localPlayer->getJJ1LevelPlayer()->getEnergy();
-	y = (ticks - prevTicks) * 40;
-
-	if (FTOI(energyBar) < x) {
-		// increase
-
-		if (ITOF(x) - energyBar < y) energyBar = ITOF(x);
-		else energyBar += y;
-
-	} else if (FTOI(energyBar) > x) {
-		// decrease
-
-		if (energyBar - ITOF(x) < y) energyBar = ITOF(x);
-		else energyBar -= y;
-
-	}
 
 	if (energyBar > F1) {
 
@@ -595,4 +670,52 @@ void JJ1Level::draw () {
 
 	// Fill in remaining energy bar space with black
 	video.drawRect(offsetX + dst.x, canvasH - 13, dst.w, 7, LEVEL_BLACK);
+
+#ifdef OJ_TILED_LEVEL
+	gbaLevel::endHud();
+
+#endif
 }
+
+
+#ifdef OJ_TILED_LEVEL
+/**
+ * Tell the tile hardware which tiles each level cell on screen shows.
+ *
+ * @param vX Level pixel at the screen's left edge
+ * @param vY Level pixel at the screen's top edge
+ */
+OJ_FAST_CODE void JJ1Level::setTiledCells (int vX, int vY) {
+
+	for (int y = 0; y <= ITOT(canvasH - 1) + 1; y++) {
+
+		for (int x = 0; x <= ITOT(canvasW - 1) + 1; x++) {
+
+			int cellX = x + ITOT(vX);
+			int cellY = y + ITOT(vY);
+
+			if ((cellX >= LW) || (cellY >= LH)) {
+
+				gbaLevel::setCell(cellX, cellY, -1, true, -1);
+				continue;
+
+			}
+
+			GridElement* ge = &grid[cellX][cellY];
+
+			// The same choices as the drawing loops in draw()
+			int event = ge->event();
+			bool foreground = (event == 124) || (event == 125) ||
+				(eventSet[event].movement == 37) || (eventSet[event].movement == 38);
+			int fgTile = -1;
+			if (event == 123) fgTile = (ticks & 64)? eventSet[event].multiB: eventSet[event].multiA;
+			if (foreground) fgTile = ge->tile;
+
+			gbaLevel::setCell(cellX, cellY, (foreground || (event == 123))? -1: ge->tile, ge->bg(), fgTile);
+
+		}
+
+	}
+
+}
+#endif

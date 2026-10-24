@@ -100,7 +100,17 @@ typedef struct SDL_Surface {
 	/* GBA stand-in only */
 	SDL_PixelFormat  formatData;
 	Uint8*           remap; ///< Logical palette as pixel value -> index, or NULL for identity
+	Uint8*           remapTable; ///< Storage for remap, kept while it is the identity
+	Uint16           remapChanged; ///< Entries of remapTable that are not the identity
+	Uint32           remapHash; ///< Identifies remap's contents; 0 for the identity
+	Uint8            kind; ///< SDL_GBA_NORMAL, SDL_GBA_SPRITES or SDL_GBA_OVERLAY
+	SDL_Rect         bounds; ///< The part that blits and fills may reach
 } SDL_Surface;
+
+/* Surfaces of the tiled level display (see platforms/gba/level_gba.h) */
+#define SDL_GBA_NORMAL  0
+#define SDL_GBA_SPRITES 1 /* Blits become hardware sprites */
+#define SDL_GBA_OVERLAY 2 /* Blits and fills go to the overlay */
 
 #define SDL_SWSURFACE   0x00000000
 #define SDL_HWSURFACE   0x00000001
@@ -128,6 +138,8 @@ int          SDL_LockSurface          (SDL_Surface* surface);
 void         SDL_UnlockSurface        (SDL_Surface* surface);
 int          SDL_SetPalette           (SDL_Surface* surface, int flags, const SDL_Color* colors, int first, int ncolors);
 int          SDL_SetColors            (SDL_Surface* surface, const SDL_Color* colors, int first, int ncolors);
+/* GBA stand-in only: give a surface the identity logical palette again */
+void         SDL_GBA_ResetPalette     (SDL_Surface* surface);
 int          SDL_SetColorKey          (SDL_Surface* surface, Uint32 flag, Uint32 key);
 SDL_bool     SDL_SetClipRect          (SDL_Surface* surface, const SDL_Rect* rect);
 int          SDL_BlitSurface          (SDL_Surface* src, SDL_Rect* srcrect, SDL_Surface* dst, SDL_Rect* dstrect);
