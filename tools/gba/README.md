@@ -66,4 +66,14 @@ menu demos play the same way every run, and it hashes every presented frame.
 This runs both builds for 12000 frames and lists the frames that differ. Both
 builds must show the same version string, because the menu draws it. For
 example, define `OJ_VERSION_GIT` in one build's `src/version.cpp`. Frames 96,
-3400 and 11178 can differ even between two runs of the same build.
+3400 and 11178 can differ even between two runs of the same build, and others
+now and then, more so when several runs share the CPU.
+
+To reach other parts of the game, run the shim directly. `DET_KEYS` presses
+keys (SDL keycodes, in decimal) at given frames, for a given number of frames.
+`DET_DUMP` saves frames as `DET_OUT.N.ppm`. For example, this starts level 2
+and holds Up for 600 frames:
+
+    HOME=/tmp/dethome SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
+    DET_FRAMES=1000 DET_OUT=/tmp/run.txt DET_KEYS="100:13,400:1073741906:600" \
+    DET_DUMP=",500,900," LD_PRELOAD=build/detshim.so OpenJazz -q --no-logfile -w 0 -l 1 DATA_DIR

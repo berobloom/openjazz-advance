@@ -6,7 +6,9 @@
  * is fixed, so the menu demos play the same way on every run. Every presented
  * frame's RGB bytes are hashed and written to DET_OUT as "frame hash" lines;
  * the program exits after DET_FRAMES frames. DET_DUMP=",N,M," also saves
- * those frames as DET_OUT.N.ppm.
+ * those frames as DET_OUT.N.ppm. DET_KEYS="F:KEY[:LEN],..." presses the SDL
+ * keycode KEY (decimal; 13 is Return) at frame F and releases it LEN frames
+ * later (default 2).
  */
 #define _GNU_SOURCE
 #include <dlfcn.h>
@@ -29,6 +31,46 @@ Uint32 SDL_GetTicks (void) { return fakeTicks(); }
 Uint64 SDL_GetTicks64 (void) { return fakeTicks(); }
 void SDL_Delay (Uint32 ms) { if (!mainThread()) usleep(ms * 1000); }
 time_t time (time_t* t) { time_t v = 1700000000; if (t) *t = v; return v; }
+
+/// Next key event due from DET_KEYS at the current frame, if any
+static int injectKey (SDL_Event* event) {
+	static int pressed[64], done[64];
+	const char* keys = getenv("DET_KEYS");
+	int i = 0;
+
+	for (const char* p = keys; p && *p && i < 64; i++) {
+		int frame = atoi(p);
+		const char* colon = strchr(p, ':');
+		if (!colon) break;
+		int key = atoi(colon + 1);
+		const char* comma = strchr(p, ',');
+		const char* second = strchr(colon + 1, ':');
+		int length = (second && (!comma || second < comma))? atoi(second + 1): 2;
+
+		int type = 0;
+		if (!pressed[i] && frames >= frame) { pressed[i] = 1; type = SDL_KEYDOWN; }
+		else if (pressed[i] && !done[i] && frames >= frame + length) { done[i] = 1; type = SDL_KEYUP; }
+
+		if (type) {
+			memset(event, 0, sizeof *event);
+			event->type = type;
+			event->key.state = (type == SDL_KEYDOWN)? SDL_PRESSED: SDL_RELEASED;
+			event->key.keysym.sym = key;
+			return 1;
+		}
+
+		p = comma? comma + 1: NULL;
+	}
+
+	return 0;
+}
+
+int SDL_PollEvent (SDL_Event* event) {
+	static int (*real)(SDL_Event*);
+	if (!real) real = dlsym(RTLD_NEXT, "SDL_PollEvent");
+	if (event && injectKey(event)) return 1;
+	return real(event);
+}
 
 int SDL_UpdateTexture (SDL_Texture* texture, const SDL_Rect* rect, const void* pixels, int pitch) {
 	static int (*real)(SDL_Texture*, const SDL_Rect*, const void*, int);
