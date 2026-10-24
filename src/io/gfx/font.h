@@ -34,8 +34,14 @@ class Font {
 		void           commonSetup();
 		void           cleanMapping();
 		bool           useBakedAtlas(const char* fileName, int param, int aW, int aH);
-		void           recordAtlas(const char* fileName, int param, int aW, int aH);
+		void           recordAtlas(const char* fileName, int param, int aW, int aH, int key);
+		void           useShrunkAtlas(const char* fileName, int param, int key);
+		void           drawCharacter(unsigned int c, int x, int y);
 		SDL_Surface   *characterAtlas; ///< Symbol images
+#ifdef OJ_SCALED_CANVAS
+		SDL_Surface   *shrunkAtlas; ///< Symbol images for the scaled canvas, or nullptr
+		const int16_t *shrunkRects; ///< Their x, width and height (and a spare), from the pack
+#endif
 		SDL_Rect       atlasRects[MAX_FONT_CHARS]; ///< Symbol positions
 		bool           isOk; ///< Font is loaded and usable
 		int            nCharacters; ///< Number of symbols

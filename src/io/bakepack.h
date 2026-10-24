@@ -36,7 +36,8 @@ enum BakeKind {
 	BAKE_MASKED_PIXELS = 3, ///< File::loadPixels(length, key); param is the key
 	BAKE_TILESET = 4,       ///< JJ1Level::loadTiles(), all tiles of a BLOCKS file
 	BAKE_FONT_ATLAS = 5,    ///< A Font's character atlas; param tells fonts of one file apart
-	BAKE_SCENE = 6          ///< A cutscene image; param is a SceneBake
+	BAKE_SCENE = 6,         ///< A cutscene image; param is a SceneBake
+	BAKE_FONT_SHRUNK = 7    ///< A Font's characters shrunk for a 240x160 screen; param as for the atlas
 };
 
 /// What a BAKE_SCENE entry holds

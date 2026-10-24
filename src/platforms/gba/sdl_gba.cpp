@@ -554,6 +554,28 @@ int SDL_BlitSurface (SDL_Surface* src, SDL_Rect* srcrect, SDL_Surface* dst, SDL_
 	return 0;
 }
 
+int SDL_GBA_BlitStored (SDL_Surface* src, SDL_Rect* srcrect, SDL_Surface* dst, int x, int y) {
+	// Stored coordinates
+	int sx = scaledColumns(x), sy = scaledRows(y);
+	const SDL_Rect& clip = dst->clip_rect;
+	int x0 = scaledColumns(clip.x), x1 = scaledColumns(clip.x + clip.w);
+	int y0 = scaledRows(clip.y), y1 = scaledRows(clip.y + clip.h);
+
+	int left = sx < x0? x0 - sx: 0;
+	int top = sy < y0? y0 - sy: 0;
+	int w = srcrect->w - left, h = srcrect->h - top;
+	if (sx + left + w > x1) w = x1 - sx - left;
+	if (sy + top + h > y1) h = y1 - sy - top;
+	if (w <= 0 || h <= 0) return 0;
+
+	const Uint8* sp = static_cast<const Uint8*>(src->pixels) + (srcrect->y + top) * src->pitch + srcrect->x + left;
+	int key = (src->flags & SDL_SRCCOLORKEY)? static_cast<int>(src->format->colorkey & 0xFF): -1;
+	gbaBlit(sp, src->pitch, static_cast<Uint8*>(dst->pixels) + (sy + top) * dst->pitch + sx + left,
+		dst->pitch, w, h, key, src->remap);
+
+	return 0;
+}
+
 int SDL_FillRect (SDL_Surface* dst, SDL_Rect* rect, Uint32 color) {
 	SDL_Rect c;
 

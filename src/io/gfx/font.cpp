@@ -34,6 +34,8 @@
 #endif
 #if OJ_DEV_HOOKS
 	#include "dev/devhooks.h"
+	#include "dev/glyphs.h"
+	#include <vector>
 #endif
 
 namespace {
@@ -45,6 +47,10 @@ namespace {
 
 void Font::commonSetup() {
 	isOk = false;
+#ifdef OJ_SCALED_CANVAS
+	shrunkAtlas = nullptr;
+	shrunkRects = nullptr;
+#endif
 	lineHeight = 0;
 	spaceWidth = 0;
 	nCharacters = MAX_FONT_CHARS;
@@ -102,10 +108,67 @@ bool Font::useBakedAtlas (const char* fileName, int param, int aW, int aH) {
 
 
 /**
- * Pass the atlas to the developer tools: character positions as pairs of
- * 16-bit numbers, then the pixels.
+ * Use the font's characters shrunk for the scaled canvas from the game data
+ * pack (see dev/glyphs.cpp). Drawn at the canvas's stored size, they stay
+ * readable.
+ *
+ * @param fileName File the font comes from
+ * @param param Which font of the file
+ * @param key Transparent value, or -1 for none
  */
-void Font::recordAtlas (const char* fileName, int param, int aW, int aH) {
+void Font::useShrunkAtlas (const char* fileName, int param, int key) {
+#if OJ_PACK && defined(OJ_SCALED_CANVAS)
+	const BakePackFile* file = packFindFile(fileName);
+	if (!file) return;
+
+	const BakePackEntry* entry = packFindDecoded(file, 0, BAKE_FONT_SHRUNK, -1, param);
+	if (!entry) return;
+
+	const int16_t* header = reinterpret_cast<const int16_t*>(packData(entry->dataOffset));
+	int sW = header[0], sH = header[1];
+	if (entry->length != static_cast<uint32_t>(4 + nCharacters * 8 + sW * sH)) return;
+
+	shrunkAtlas = video.createSurface(reinterpret_cast<const unsigned char*>(header + 2 + nCharacters * 4), sW, sH);
+	if (!shrunkAtlas) return;
+	if (key >= 0) video.enableColorKey(shrunkAtlas, key);
+	shrunkRects = header + 2;
+#else
+	OJ_UNUSED(fileName);
+	OJ_UNUSED(param);
+	OJ_UNUSED(key);
+#endif
+}
+
+
+/**
+ * Draw a character on the canvas.
+ *
+ * @param c Symbol index
+ * @param x Canvas x-coordinate
+ * @param y Canvas y-coordinate
+ */
+void Font::drawCharacter (unsigned int c, int x, int y) {
+#ifdef OJ_SCALED_CANVAS
+	if (shrunkAtlas && canvas->w > canvas->pitch) {
+		SDL_Rect src = {shrunkRects[c * 4], 0,
+			static_cast<Uint16>(shrunkRects[(c * 4) + 1]), static_cast<Uint16>(shrunkRects[(c * 4) + 2])};
+		SDL_GBA_BlitStored(shrunkAtlas, &src, canvas, x, y);
+		return;
+	}
+#endif
+
+	SDL_Rect dst = { static_cast<decltype(dst.x)>(x), static_cast<decltype(dst.y)>(y), 0, 0 };
+	SDL_BlitSurface(characterAtlas, &atlasRects[c], canvas, &dst);
+}
+
+
+/**
+ * Pass the atlas to the developer tools: character positions as pairs of
+ * 16-bit numbers, then the pixels. The characters shrunk for scaled canvases
+ * follow as a second entry: the strip's width and height, then each
+ * character's x, width, height and a spare, then the pixels.
+ */
+void Font::recordAtlas (const char* fileName, int param, int aW, int aH, int key) {
 #if OJ_DEV_HOOKS
 	int length = nCharacters * 4 + aW * aH;
 	unsigned char* data = new unsigned char[length];
@@ -125,12 +188,57 @@ void Font::recordAtlas (const char* fileName, int param, int aW, int aH) {
 	// The file's data is still read, so no hole
 	devDecoded(fileName, 0, 0, 0, BAKE_FONT_ATLAS, param, data, length);
 
+	// Fonts without a transparent value have the most common one around their strokes
+	const unsigned char* pixels = data + nCharacters * 4;
+	int background = key;
+	if (background < 0) {
+		int counts[256] = {};
+		for (int i = 0; i < aW * aH; i++) counts[pixels[i]]++;
+		background = 0;
+		for (int i = 1; i < 256; i++) if (counts[i] > counts[background]) background = i;
+	}
+
+	int sW = 0, sH = 0;
+	for (int i = 0; i < nCharacters; i++) {
+		if (atlasRects[i].w <= 0 || atlasRects[i].h <= 0) continue;
+		sW += shrunkGlyphWidth(atlasRects[i].w);
+		int h = shrunkGlyphHeight(atlasRects[i].h);
+		if (h > sH) sH = h;
+	}
+
+	std::vector<int16_t> header(2 + nCharacters * 4, 0);
+	std::vector<unsigned char> strip(sW * sH, background);
+	header[0] = sW;
+	header[1] = sH;
+
+	int x = 0;
+	for (int i = 0; i < nCharacters; i++) {
+		if (atlasRects[i].w <= 0 || atlasRects[i].h <= 0) continue;
+		int w = shrunkGlyphWidth(atlasRects[i].w);
+		int h = shrunkGlyphHeight(atlasRects[i].h);
+		std::vector<unsigned char> glyph(w * h);
+		shrinkGlyph(pixels + (atlasRects[i].y * aW) + atlasRects[i].x, aW, atlasRects[i].w, atlasRects[i].h,
+			background, glyph.data());
+		for (int y = 0; y < h; y++)
+			for (int gx = 0; gx < w; gx++) strip[(y * sW) + x + gx] = glyph[(y * w) + gx];
+		header[2 + (i * 4)] = x;
+		header[2 + (i * 4) + 1] = w;
+		header[2 + (i * 4) + 2] = h;
+		x += w;
+	}
+
+	std::vector<unsigned char> shrunk(header.size() * 2 + strip.size());
+	memcpy(shrunk.data(), header.data(), header.size() * 2);
+	if (!strip.empty()) memcpy(shrunk.data() + header.size() * 2, strip.data(), strip.size());
+	devDecoded(fileName, 0, 0, 0, BAKE_FONT_SHRUNK, param, shrunk.data(), shrunk.size());
+
 	delete[] data;
 #else
 	OJ_UNUSED(fileName);
 	OJ_UNUSED(param);
 	OJ_UNUSED(aW);
 	OJ_UNUSED(aH);
+	OJ_UNUSED(key);
 #endif
 }
 
@@ -228,8 +336,9 @@ Font::Font (const char* fileName) {
 		} else
 			LOG_WARN("Could not pack font atlas!");
 	}
-	if (res) recordAtlas(fileName, 0, aW, aH);
+	if (res) recordAtlas(fileName, 0, aW, aH, 0);
 	video.enableColorKey(characterAtlas, 0);
+	useShrunkAtlas(fileName, 0, 0);
 
 	// Delete single char surfaces
 	for (int i = 0; i < nCharacters; i++) {
@@ -344,8 +453,9 @@ Font::Font (unsigned char* pixels, bool big) {
 		} else
 			LOG_WARN("Could not pack font atlas!");
 	}
-	if (res) recordAtlas("PANEL.000", big? 1: 2, aW, aH);
+	if (res) recordAtlas("PANEL.000", big? 1: 2, aW, aH, big? 31: -1);
 	if (big) video.enableColorKey(characterAtlas, 31);
+	useShrunkAtlas("PANEL.000", big? 1: 2, big? 31: -1);
 
 	// Delete single char surfaces
 	for (int i = 0; i < nCharacters; i++)
@@ -472,8 +582,9 @@ Font::Font (bool bonus) {
 		} else
 			LOG_WARN("Could not pack font atlas!");
 	}
-	if (res) recordAtlas(bonus? "BONUS.000": "FONTS.000", 0, aW, aH);
+	if (res) recordAtlas(bonus? "BONUS.000": "FONTS.000", 0, aW, aH, 254);
 	video.enableColorKey(characterAtlas, 254);
+	useShrunkAtlas(bonus? "BONUS.000": "FONTS.000", 0, 254);
 
 	// Delete single char surfaces
 	for (int i = 0; i < nCharacters; i++)
@@ -508,6 +619,9 @@ Font::Font (bool bonus) {
  */
 Font::~Font () {
 	video.destroySurface(characterAtlas);
+#ifdef OJ_SCALED_CANVAS
+	video.destroySurface(shrunkAtlas);
+#endif
 }
 
 
@@ -579,11 +693,8 @@ Point Font::showString (const char* string, int x, int y,
 				continue;
 			}
 
-			// Determine the character's position on the screen
-			SDL_Rect dst = { static_cast<decltype(dst.x)>(xOffset), static_cast<decltype(dst.y)>(yOffset), 0, 0 };
-
 			// Draw the character to the screen
-			SDL_BlitSurface(characterAtlas, &atlasRects[c], canvas, &dst);
+			drawCharacter(c, xOffset, yOffset);
 
 			xOffset += atlasRects[c].w + normalPadding;
 		}
@@ -616,9 +727,6 @@ int Font::showSceneString (const unsigned char* string, int x, int y) {
 	// Go through each character of the string
 	for (int i = 0; string[i]; i++) {
 
-		// Determine the character's position on the screen
-		SDL_Rect dst = { static_cast<decltype(dst.x)>(offset), static_cast<decltype(dst.y)>(y), 0, 0 };
-
 		// use space for invalid characters
 		if (string[i] >= nCharacters) {
 			offset += spaceWidth;
@@ -628,7 +736,7 @@ int Font::showSceneString (const unsigned char* string, int x, int y) {
 		int c = string[i];
 
 		// Draw the character to the screen
-		SDL_BlitSurface(characterAtlas, &atlasRects[c], canvas, &dst);
+		drawCharacter(c, offset, y);
 
 		offset += atlasRects[c].w + sceneStringPadding;
 	}
@@ -661,7 +769,7 @@ void Font::showNumber (int n, int x, int y) {
 		dst.x = x - atlasRects[c].w;
 
 		// Draw 0 to the screen
-		SDL_BlitSurface(characterAtlas, &atlasRects[c], canvas, &dst);
+		drawCharacter(c, dst.x, dst.y);
 
 		return;
 	}
@@ -684,7 +792,7 @@ void Font::showNumber (int n, int x, int y) {
 		dst.x = offset;
 
 		// Draw the digit to the screen
-		SDL_BlitSurface(characterAtlas, &atlasRects[c], canvas, &dst);
+		drawCharacter(c, dst.x, dst.y);
 
 		count /= 10;
 	}
@@ -698,7 +806,7 @@ void Font::showNumber (int n, int x, int y) {
 		dst.x = offset - atlasRects[c].w;
 
 		// Draw the negative sign to the screen
-		SDL_BlitSurface(characterAtlas, &atlasRects[c], canvas, &dst);
+		drawCharacter(c, dst.x, dst.y);
 	}
 }
 
@@ -724,6 +832,9 @@ void Font::mapPalette (int start, int length, int newStart, int newLength) {
 	}
 
 	video.setSurfacePalette(characterAtlas, palette, start, length);
+#ifdef OJ_SCALED_CANVAS
+	if (shrunkAtlas) video.setSurfacePalette(shrunkAtlas, palette, start, length);
+#endif
 }
 
 
@@ -734,6 +845,9 @@ void Font::restorePalette () {
 	if (!isOk) return;
 
 	video.restoreSurfacePalette(characterAtlas);
+#ifdef OJ_SCALED_CANVAS
+	if (shrunkAtlas) video.restoreSurfacePalette(shrunkAtlas);
+#endif
 }
 
 

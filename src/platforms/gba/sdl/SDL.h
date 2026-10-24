@@ -140,6 +140,9 @@ int          SDL_SetPalette           (SDL_Surface* surface, int flags, const SD
 int          SDL_SetColors            (SDL_Surface* surface, const SDL_Color* colors, int first, int ncolors);
 /* GBA stand-in only: give a surface the identity logical palette again */
 void         SDL_GBA_ResetPalette     (SDL_Surface* surface);
+/* GBA stand-in only: blit an image already shrunk to a scaled surface's
+   stored size, placing it where the surface stores the given point */
+int          SDL_GBA_BlitStored       (SDL_Surface* src, SDL_Rect* srcrect, SDL_Surface* dst, int x, int y);
 int          SDL_SetColorKey          (SDL_Surface* surface, Uint32 flag, Uint32 key);
 SDL_bool     SDL_SetClipRect          (SDL_Surface* surface, const SDL_Rect* rect);
 int          SDL_BlitSurface          (SDL_Surface* src, SDL_Rect* srcrect, SDL_Surface* dst, SDL_Rect* dstrect);

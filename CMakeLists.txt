@@ -274,6 +274,8 @@ if(MEMSTATS OR BAKE)
 	target_sources(OpenJazz PRIVATE
 		src/dev/devhooks.cpp
 		src/dev/devhooks.h
+		src/dev/glyphs.cpp
+		src/dev/glyphs.h
 		src/dev/sweep.cpp
 		src/dev/sweep.h)
 	target_compile_definitions(OpenJazz PRIVATE OJ_DEV_HOOKS)
