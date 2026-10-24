@@ -212,6 +212,35 @@ void Sprite::draw (int x, int y, bool includeOffsets) {
 }
 
 
+namespace {
+
+	/// DIV(n, scale) for a growing n, kept as a quotient and remainder instead of divided out each time
+	class ScaledPosition {
+		public:
+			ScaledPosition (int n, fixed newScale) :
+				scale(newScale), quotient(DIV(n, newScale)), remainder(ITOF(n) % newScale),
+				unitQuotient(ITOF(1) / newScale), unitRemainder(ITOF(1) % newScale) {}
+
+			/// Increase n by one
+			void next () {
+				quotient += unitQuotient;
+				remainder += unitRemainder;
+				if (remainder >= scale) {
+					remainder -= scale;
+					quotient++;
+				}
+			}
+
+			int get () const { return quotient; }
+
+		private:
+			fixed scale;
+			int quotient, remainder, unitQuotient, unitRemainder;
+	};
+
+}
+
+
 /**
  * Draw the sprite scaled
  *
@@ -275,23 +304,30 @@ void Sprite::drawScaled (int x, int y, fixed scale) {
 		return;
 	}
 
-	// The source column depends only on the canvas column, so divide once per column
+	// The source column depends only on the canvas column, so find each once
 	std::unique_ptr<int[]> srcColumns(new int[endColumn - firstColumn]);
+
+	srcX = firstSrcX + canvasColumnOf(canvas, firstColumn) - firstDstX;
+	ScaledPosition srcColumn(srcX, scale);
 
 	for (int column = firstColumn; column < endColumn; column++) {
 
 		dstX = canvasColumnOf(canvas, column);
-		srcX = firstSrcX + dstX - firstDstX;
-		srcColumns[column - firstColumn] = DIV(srcX, scale);
+		for (; srcX < firstSrcX + dstX - firstDstX; srcX++) srcColumn.next();
+		srcColumns[column - firstColumn] = srcColumn.get();
 
 	}
 
-	for (int row = canvasRows(canvas, firstDstY); row < endRow; row++) {
+	int firstRow = canvasRows(canvas, firstDstY);
+	srcY = firstSrcY + canvasRowOf(canvas, firstRow) - firstDstY;
+	ScaledPosition srcRowNumber(srcY, scale);
+
+	for (int row = firstRow; row < endRow; row++) {
 
 		dstY = canvasRowOf(canvas, row);
-		srcY = firstSrcY + dstY - firstDstY;
+		for (; srcY < firstSrcY + dstY - firstDstY; srcY++) srcRowNumber.next();
 
-		unsigned char* srcRow = static_cast<unsigned char*>(pixels->pixels) + (pixels->pitch * DIV(srcY, scale));
+		unsigned char* srcRow = static_cast<unsigned char*>(pixels->pixels) + (pixels->pitch * srcRowNumber.get());
 		unsigned char* dstRow = static_cast<unsigned char*>(canvas->pixels) + (canvas->pitch * row);
 
 		for (int column = firstColumn; column < endColumn; column++) {

@@ -400,6 +400,13 @@ void gbaCopyWords (const void* src, void* dst, int words) {
 
 void gbaFillWords (void* dst, uint32_t value, int words) {
 
+	// The words after the last eight
+	uint32_t* word = static_cast<uint32_t*>(dst);
+	int tail = words & 7;
+	words -= tail;
+	for (int i = 0; i < tail; i++) word[words + i] = value;
+	if (!words) return;
+
 #ifdef __arm__
 	asm volatile (
 		"mov r3, %2\n"
@@ -418,7 +425,6 @@ void gbaFillWords (void* dst, uint32_t value, int words) {
 		: "r" (value)
 		: "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "cc", "memory");
 #else
-	uint32_t* word = static_cast<uint32_t*>(dst);
 	for (int i = 0; i < words; i++) word[i] = value;
 #endif
 

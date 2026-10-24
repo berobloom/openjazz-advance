@@ -31,14 +31,19 @@
    columns 0, 1 and 3 of every four and rows 0, 1, 3 and 4 of every five. Code
    that writes canvas pixels directly maps them with these (see io/gfx/video.h). */
 #define OJ_SCALED_CANVAS
+/* Division by 3 and 5 as a multiplication, which is exact over these ranges.
+   Thumb code has no long multiplication, so for n / 3 it calls the slow
+   division routine. */
+inline int divideBy3 (int n) { return (static_cast<unsigned int>(n) < 98304)? (static_cast<unsigned int>(n) * 43691u) >> 17: n / 3; }
+inline int divideBy5 (int n) { return (static_cast<unsigned int>(n) < 81920)? (static_cast<unsigned int>(n) * 52429u) >> 18: n / 5; }
 /// Canvas column of the given stored column
-inline int scaledColumnOf (int column) { int j = column % 3; return ((column / 3) << 2) + j + (j >> 1); }
+inline int scaledColumnOf (int column) { int q = divideBy3(column), j = column - (q * 3); return (q << 2) + j + (j >> 1); }
 /// Canvas row of the given stored row
 inline int scaledRowOf (int row) { return ((row * 5) + 2) >> 2; }
 /// Number of stored columns left of the given canvas column
 inline int scaledColumns (int x) { int r = x & 3; return (3 * (x >> 2)) + r - (r == 3); }
 /// Number of stored rows above the given canvas row
-inline int scaledRows (int y) { int r = y % 5; return ((y / 5) << 2) + r - (r >= 3); }
+inline int scaledRows (int y) { int q = divideBy5(y), r = y - (q * 5); return (q << 2) + r - (r >= 3); }
 #define FULLSCREEN_ONLY
 #define NO_RESIZE
 #define T_MENU_FRAME 0 // Flips wait for VBlank already

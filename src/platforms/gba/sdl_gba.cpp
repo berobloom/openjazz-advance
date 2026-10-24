@@ -36,6 +36,7 @@
 	#include "heaptrace.h"
 #endif
 
+#include <algorithm>
 #include <gba_dma.h>
 #include <gba_input.h>
 #include <gba_interrupt.h>
@@ -63,6 +64,9 @@ namespace {
 	EWRAM_BSS u16 flipPalette[256]; ///< Palette to show with the pending page
 	volatile bool flipPaletteDirty = false;
 	volatile bool flipPending = false; ///< A drawn page waits for VBlank
+
+	/// Stored screen rows unchanged since the last flip, then as of the flip before
+	EWRAM_BSS struct { int first, end; } keptRows[2];
 
 	const char* lastError = "";
 
@@ -310,6 +314,10 @@ bool gbaRestoreScreen (unsigned char* pixels) {
 	return screen->pixels;
 }
 
+void SDL_GBA_KeepRows (int first, int end) {
+	keptRows[0] = {first, end};
+}
+
 int SDL_Flip (SDL_Surface* surface) {
 	if (surface != screen) return -1;
 
@@ -322,8 +330,23 @@ int SDL_Flip (SDL_Surface* surface) {
 		gbaLevel::commit(hwPalette);
 	} else {
 		u16* page = reinterpret_cast<u16*>((REG_DISPCNT & BACKBUFFER)? VRAM: VRAM + 0xA000);
-		gbaCopyWords(screen->pixels, page, SCREEN_W * SCREEN_H / 4);
+
+		/* The page last held the frame before the previous one, so rows that
+		   have not changed over both flips are already there. Copy an even
+		   number of rows either side, for whole bursts of eight words. */
+		int first = std::max(keptRows[0].first, keptRows[1].first);
+		int end = std::min(keptRows[0].end, keptRows[1].end);
+		first = (first + 1) & ~1;
+		end &= ~1;
+		if (first >= end) first = end = SCREEN_H;
+
+		const int rowWords = SCREEN_W / 4;
+		if (first) gbaCopyWords(screen->pixels, page, first * rowWords);
+		if (end < SCREEN_H) gbaCopyWords(static_cast<u32*>(screen->pixels) + (end * rowWords), page + (end * SCREEN_W / 2), (SCREEN_H - end) * rowWords);
 	}
+
+	keptRows[1] = keptRows[0];
+	keptRows[0] = {0, 0};
 
 	if (hwPaletteDirty) {
 		memcpy(flipPalette, hwPalette, sizeof(flipPalette));

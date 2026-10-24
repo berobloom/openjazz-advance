@@ -97,7 +97,7 @@ class JJ1BonusLevelPlayer final : public LevelPlayer {
 		void          receive      (unsigned char* buffer) override;
 
 		void          step         (unsigned int ticks, int msps, JJ1BonusLevel* bonus);
-		void          draw         (unsigned int ticks);
+		int           draw         (unsigned int ticks);
 
 };
 

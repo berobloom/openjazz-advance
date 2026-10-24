@@ -79,7 +79,7 @@ void gbaCopyWords (const void* src, void* dst, int words);
  *
  * @param dst Destination, word-aligned
  * @param value Word to store
- * @param words Number of words, a multiple of 8
+ * @param words Number of words, fastest in multiples of 8
  */
 void gbaFillWords (void* dst, uint32_t value, int words);
 

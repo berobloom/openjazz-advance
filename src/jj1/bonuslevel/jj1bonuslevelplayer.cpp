@@ -321,15 +321,31 @@ void JJ1BonusLevelPlayer::step (unsigned int ticks, int msps, JJ1BonusLevel* bon
  * Draw the player.
  *
  * @param ticks Time
+ *
+ * @return The highest canvas row drawn on
  */
-void JJ1BonusLevelPlayer::draw (unsigned int ticks) {
+int JJ1BonusLevelPlayer::draw (unsigned int ticks) {
 
 	Anim* anim;
 
 	anim = anims[animType];
 	anim->setFrame(ticks / 75, true);
-	if (canvasW <= SW) anim->draw(ITOF((canvasW - anim->getWidth()) >> 1), ITOF(canvasH - anim->getHeight() - 16 - FTOI(z * 80)));
-	else anim->drawScaled(ITOF(canvasW >> 1), ITOF(canvasH - ((((anim->getHeight() >> 1) + 16 + FTOI(z * 80)) * canvasW) / SW)), ITOF(canvasW) / SW);
+
+	if (canvasW <= SW) {
+
+		fixed y = ITOF(canvasH - anim->getHeight() - 16 - FTOI(z * 80));
+		anim->draw(ITOF((canvasW - anim->getWidth()) >> 1), y);
+
+		// As Anim::draw() places the frame
+		return FTOI(y + anim->getYOffset() + anim->getOffset()) - 1;
+
+	}
+
+	fixed scale = ITOF(canvasW) / SW;
+	int y = canvasH - ((((anim->getHeight() >> 1) + 16 + FTOI(z * 80)) * canvasW) / SW);
+	anim->drawScaled(ITOF(canvasW >> 1), ITOF(y), scale);
+
+	return y - (FTOI(anim->getHeight() * scale) >> 1);
 
 }
 

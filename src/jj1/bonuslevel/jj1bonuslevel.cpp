@@ -40,6 +40,9 @@
 #if OJ_PACK
 	#include "io/pack.h"
 #endif
+#ifdef OJ_SCALED_CANVAS
+	#include "platforms/gba/blit_gba.h"
+#endif
 
 #include <algorithm>
 #include <memory>
@@ -687,6 +690,71 @@ int JJ1BonusLevel::step () {
 }
 
 
+#ifdef OJ_SCALED_CANVAS
+/**
+ * How far ahead the ground is at a canvas row.
+ *
+ * @param y Canvas rows from the bottom
+ * @param perHorizonRow 2^20 divided by the rows from the bottom to the horizon
+ *
+ * @return Distance
+ */
+static inline fixed groundDistance (int y, int perHorizonRow) {
+
+	return DIV(ITOF(800), ITOF(92) - ((y * 84 * perHorizonRow) >> 10));
+
+}
+
+
+/**
+ * Draw a row of the ground, from one level pixel every two columns.
+ *
+ * @param out First four columns of the row, as the canvas takes 32-bit writes
+ * @param end Past the last four columns
+ * @param nextRow Words from a column to the one below, to draw two rows, or 0
+ * @param u Level x of the first level pixel, with 19 fractional bits
+ * @param v Level y of the first level pixel, with 19 fractional bits
+ * @param du Change in u to the next level pixel
+ * @param dv Change in v to the next level pixel
+ * @param grid Grid element tile numbers, 256 by 256
+ * @param tilePixels The tile set, 32x32 tiles one below the other
+ */
+static OJ_FAST_CODE void drawGroundRow (unsigned int* out, unsigned int* end, int nextRow,
+	unsigned int u, unsigned int v, int du, int dv, const unsigned char* grid, const unsigned char* tilePixels) {
+
+	// Neighbouring pixels are mostly in the same grid element
+	unsigned int lastElement = ~0u;
+	const unsigned char* tile = tilePixels;
+
+	for (; out < end; out++) {
+
+		unsigned int pixels = 0;
+
+#pragma GCC unroll 2
+		for (int shift = 0; shift < 32; shift += 16) {
+
+			unsigned int element = ((v >> 16) & 0xFF00) | (u >> 24);
+			if (element != lastElement) {
+				lastElement = element;
+				tile = tilePixels + (grid[element] << 10);
+			}
+
+			pixels |= tile[((v >> 14) & (31 << 5)) | ((u >> 19) & 31)] << shift;
+			u += du;
+			v += dv;
+
+		}
+
+		pixels *= 0x0101;
+		out[0] = pixels;
+		if (nextRow) out[nextRow] = pixels;
+
+	}
+
+}
+#endif
+
+
 /**
  * Draw the ground, in perspective.
  *
@@ -695,7 +763,7 @@ int JJ1BonusLevel::step () {
  * @param playerSin Sine of the player's direction
  * @param playerCos Cosine of the player's direction
  */
-OJ_FAST_CODE void JJ1BonusLevel::drawGround (fixed playerX, fixed playerY, fixed playerSin, fixed playerCos) {
+void JJ1BonusLevel::drawGround (fixed playerX, fixed playerY, fixed playerSin, fixed playerCos) {
 
 	if (SDL_MUSTLOCK(canvas)) SDL_LockSurface(canvas);
 
@@ -703,6 +771,51 @@ OJ_FAST_CODE void JJ1BonusLevel::drawGround (fixed playerX, fixed playerY, fixed
 	int endRow = canvasRows(canvas, canvasH);
 	int endColumn = canvasColumns(canvas, canvasW);
 
+#ifdef OJ_SCALED_CANVAS
+	const unsigned char* tilePixels = static_cast<unsigned char*>(tileSet->pixels);
+
+	// To divide by these with 32-bit multiplications, as Thumb code has no long ones
+	int perColumn = (1 << 16) / endColumn;
+	int perHorizonRow = (1 << 20) / ((canvasH >> 1) - 16);
+
+	int storedRow = canvasRows(canvas, canvasH - ((canvasH >> 1) - 15));
+	fixed nextDistance = groundDistance(canvasH - canvasRowOf(canvas, storedRow), perHorizonRow);
+
+	for (; storedRow < endRow; storedRow++) {
+
+		fixed distance = nextDistance;
+		if (storedRow + 1 < endRow) nextDistance = groundDistance(canvasH - canvasRowOf(canvas, storedRow + 1), perHorizonRow);
+
+		// Near the bottom, a level pixel is more than two rows tall, so draw two rows at once
+		bool doubled = (storedRow + 1 < endRow) && (distance - nextDistance < (F1 >> 1));
+		if (doubled && (storedRow + 2 < endRow)) nextDistance = groundDistance(canvasH - canvasRowOf(canvas, storedRow + 2), perHorizonRow);
+
+		fixed sideX = MUL(distance, playerCos);
+		fixed sideY = MUL(distance, playerSin);
+		fixed fwdX = playerX + MUL(distance - F16, playerSin) - (sideX >> 1);
+		fixed fwdY = playerY - MUL(distance - F16, playerCos) - (sideY >> 1);
+
+		/* Level pixels with 19 fractional bits, so the top 8 bits are the grid
+		   element. The level wraps every 2^32 of these. */
+		unsigned int u = static_cast<unsigned int>(fwdX) << 9;
+		unsigned int v = static_cast<unsigned int>(fwdY) << 9;
+		int du = ((sideX << 1) * perColumn) >> 8;
+		int dv = ((sideY << 1) * perColumn) >> 8;
+
+		/* Even at the horizon, each level pixel is more than two columns wide,
+		   so take one in two columns, from the middle of each pair */
+		u += du;
+		v += dv;
+		du <<= 1;
+		dv <<= 1;
+
+		unsigned int* out = reinterpret_cast<unsigned int*>(static_cast<unsigned char*>(canvas->pixels) + (canvas->pitch * storedRow));
+		drawGroundRow(out, out + (endColumn >> 2), doubled? (canvas->pitch >> 2): 0, u, v, du, dv, tiles, tilePixels);
+
+		if (doubled) storedRow++;
+
+	}
+#else
 	// How far across the canvas each column is, which only depends on the column
 	std::unique_ptr<fixed[]> across(new fixed[endColumn]);
 	for (int column = 0; column < endColumn; column++)
@@ -744,10 +857,43 @@ OJ_FAST_CODE void JJ1BonusLevel::drawGround (fixed playerX, fixed playerY, fixed
 		}
 
 	}
+#endif
 
 	if (SDL_MUSTLOCK(canvas)) SDL_UnlockSurface(canvas);
 
 }
+
+
+#ifdef OJ_SCALED_CANVAS
+/**
+ * Draw part of the sky, in one pass over the stored rows: one colour per row,
+ * from 171 just above the background up to 128, which fills the rest.
+ *
+ * @param top First canvas row
+ * @param bottom Canvas row below the last
+ */
+void JJ1BonusLevel::drawSky (int top, int bottom) {
+
+	if (SDL_MUSTLOCK(canvas)) SDL_LockSurface(canvas);
+
+	int lowest = (canvasH >> 1) - 5;
+	if (bottom > lowest + 1) bottom = lowest + 1;
+	int endRow = canvasRows(canvas, bottom);
+	int words = canvasColumns(canvas, canvasW) >> 2;
+
+	for (int row = canvasRows(canvas, top < 0? 0: top); row < endRow; row++) {
+
+		int color = 171 - (lowest - canvasRowOf(canvas, row));
+		unsigned int value = (color < 128? 128u: color) * 0x01010101u;
+
+		gbaFillWords(static_cast<unsigned char*>(canvas->pixels) + (canvas->pitch * row), value, words);
+
+	}
+
+	if (SDL_MUSTLOCK(canvas)) SDL_UnlockSurface(canvas);
+
+}
+#endif
 
 
 /**
@@ -770,6 +916,14 @@ void JJ1BonusLevel::draw () {
 
 	}
 
+#ifdef OJ_SCALED_CANVAS
+	/* The canvas keeps the sky from frame to frame, so only draw it again
+	   behind the text and wherever sprites went last time */
+	drawSky(0, font->getHeight());
+	drawSky(std::max(skyDamage, font->getHeight()), canvasH);
+	int keptSky = skyDamage;
+	skyDamage = canvasH;
+#else
 	x = 171;
 
 	for (y = (canvasH >> 1) - 5; (y >= 0) && (x > 128); y--)
@@ -777,6 +931,7 @@ void JJ1BonusLevel::draw () {
 
 	if (y > 0)
 		video.drawRect(0, 0, canvasW, y + 1, 128);
+#endif
 
 
 	bonusPlayer = localPlayer->getJJ1BonusLevelPlayer();
@@ -812,8 +967,13 @@ void JJ1BonusLevel::draw () {
 
 					anim->setFrame(ticks / 75, true);
 					fixed nX = DIV(MUL(sX, playerCos) + MUL(sY, playerSin), divisor);
+					fixed scale = DIV(F64 * canvasW / SW, divisor);
 					anim->drawScaled(ITOF(FTOI(nX * canvasW) + (canvasW >> 1)),
-						ITOF(canvasH >> 1), DIV(F64 * canvasW / SW, divisor));
+						ITOF(canvasH >> 1), scale);
+
+#ifdef OJ_SCALED_CANVAS
+					skyDamage = std::min(skyDamage, (canvasH >> 1) - (FTOI(anim->getHeight() * scale) >> 1));
+#endif
 				}
 			}
 		}
@@ -821,7 +981,15 @@ void JJ1BonusLevel::draw () {
 
 
 	// Show the player
+#ifdef OJ_SCALED_CANVAS
+	skyDamage = std::min(skyDamage, bonusPlayer->draw(ticks));
+
+	// The sky between the text and the sprites stays as it was on screen
+	SDL_GBA_KeepRows(canvasRows(canvas, font->getHeight()),
+		canvasRows(canvas, std::min(std::min(keptSky, skyDamage), (canvasH >> 1) - 4)));
+#else
 	bonusPlayer->draw(ticks);
+#endif
 
 
 	// Show gem count
@@ -862,6 +1030,10 @@ int JJ1BonusLevel::play () {
 	returnTime = 0;
 
 	video.setPalette(palette);
+
+#ifdef OJ_SCALED_CANVAS
+	skyDamage = 0;
+#endif
 
 	while (true) {
 
@@ -915,6 +1087,14 @@ int JJ1BonusLevel::play () {
 
 		// Draw statistics, menu etc.
 		drawOverlay(0, pmenu, option, 0, 31, 16);
+
+#ifdef OJ_SCALED_CANVAS
+		// These were drawn over the sky
+		if (pmenu || pmessage || stats) {
+			skyDamage = 0;
+			SDL_GBA_KeepRows(0, 0);
+		}
+#endif
 
 	}
 

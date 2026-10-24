@@ -143,6 +143,9 @@ void         SDL_GBA_ResetPalette     (SDL_Surface* surface);
 /* GBA stand-in only: blit an image already shrunk to a scaled surface's
    stored size, placing it where the surface stores the given point */
 int          SDL_GBA_BlitStored       (SDL_Surface* src, SDL_Rect* srcrect, SDL_Surface* dst, int x, int y);
+/* GBA stand-in only: promise that these stored rows of the screen have not
+   changed since the last flip, so the next one may leave them out */
+void         SDL_GBA_KeepRows         (int first, int end);
 int          SDL_SetColorKey          (SDL_Surface* surface, Uint32 flag, Uint32 key);
 SDL_bool     SDL_SetClipRect          (SDL_Surface* surface, const SDL_Rect* rect);
 int          SDL_BlitSurface          (SDL_Surface* src, SDL_Rect* srcrect, SDL_Surface* dst, SDL_Rect* dstrect);

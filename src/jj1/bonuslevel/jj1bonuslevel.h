@@ -73,6 +73,9 @@ class JJ1BonusLevel : public Level {
 		std::vector<unsigned short> takenEvents; ///< Grid elements whose events were collected, in order
 		char                     mask[60][64]; ///< Tile masks (at most 60 tiles, all with 8 * 8 masks)
 		fixed                    direction; ///< Player's direction
+#ifdef OJ_SCALED_CANVAS
+		int                      skyDamage; ///< The sky was drawn over from this canvas row down
+#endif
 
 		JJ1BonusLevel(const JJ1BonusLevel&); // non construction-copyable
 		JJ1BonusLevel& operator=(const JJ1BonusLevel&); // non copyable
@@ -83,6 +86,9 @@ class JJ1BonusLevel : public Level {
 		unsigned char getEvent (int gridX, int gridY);
 		void clearEvent  (int gridX, int gridY);
 		int  step        ();
+#ifdef OJ_SCALED_CANVAS
+		void drawSky     (int top, int bottom);
+#endif
 		void drawGround  (fixed playerX, fixed playerY, fixed playerSin, fixed playerCos);
 		void draw        ();
 
