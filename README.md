@@ -49,7 +49,7 @@ Then build the ROM with the pack in it:
     cmake -B build-gba -DCMAKE_TOOLCHAIN_FILE=$DEVKITPRO/cmake/GBA.cmake -DGBA_PACK=$PWD/ojpack.bin
     cmake --build build-gba     # builds build-gba/OpenJazz.gba
 
-The ROM is about 25 MB, so a flash cartridge needs to take 32 MB ROMs. It runs in [mGBA](https://mgba.io/) and on a real GBA with a flash cartridge. The cartridge is read with the slower timing that flash cartridges can keep up with (4/2 wait states); the faster 3/1 timing gave a white screen on real hardware.
+The ROM is about 25 MB, so a flash cartridge needs to take 32 MB ROMs. It runs in [mGBA](https://mgba.io/) and on a real GBA with a flash cartridge. The cartridge is read with the slower timing that flash cartridges can keep up with (3/2 wait states); the faster 3/1 timing gave a white screen on real hardware.
 
 ### Controls
 
