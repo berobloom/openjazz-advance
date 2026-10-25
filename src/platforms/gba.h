@@ -68,6 +68,12 @@ inline int scaledRows (int y) { int q = divideBy5(y), r = y - (q * 5); return (q
 /// Stop with a message if the stack has run into the IWRAM data below it
 void gbaCheckStack();
 
+/* Show a plain colour (BGR555) while starting up. If the game stops before it
+   shows anything, the colour left on screen tells how far it got: red while
+   switching the cartridge timing, yellow before the game starts, blue while
+   setting up video and sound. */
+void gbaBootStage(unsigned short color);
+
 /// Bytes of IWRAM stack never used so far
 int gbaFreeStack();
 

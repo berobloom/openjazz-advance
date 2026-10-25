@@ -83,10 +83,6 @@ namespace {
 		return reinterpret_cast<unsigned int*>((reinterpret_cast<unsigned int>(__iheap_start) + 3) & ~3);
 	}
 
-	/// Faster cartridge ROM access: 3/1 wait states with prefetch, as most games use
-	__attribute__((constructor)) void initRomTiming () {
-		*reinterpret_cast<volatile unsigned short*>(0x4000204) = 0x4317;
-	}
 
 	__attribute__((constructor)) void initStackFill () {
 		unsigned int* top = static_cast<unsigned int*>(__builtin_frame_address(0)) - 64;
@@ -194,8 +190,24 @@ int gbaFreeStack () {
 
 extern "C" char __sbss_start__[], __sbss_end__[];
 
+void gbaBootStage (unsigned short color) {
+	*reinterpret_cast<volatile unsigned short*>(0x5000000) = color; // Backdrop
+	*reinterpret_cast<volatile unsigned short*>(0x4000000) = 0; // Mode 0, no layers
+}
+
+
+/* Cartridge ROM at 4/2 wait states with prefetch, SRAM at 8. Some flash
+   cartridges can't keep up with the faster 3/1 and crash right after the
+   switch, leaving a white screen. */
+__attribute__((constructor(101))) static void initRomTiming () {
+	gbaBootStage(0x001F);
+	*reinterpret_cast<volatile unsigned short*>(0x4000204) = 0x4003;
+	gbaBootStage(0x03FF);
+}
+
+
 /// Zero the globals kept in EWRAM (OJ_SLOW_DATA) before any constructor uses them
-__attribute__((constructor(101))) static void clearSlowData () {
+__attribute__((constructor(102))) static void clearSlowData () {
 	memset(__sbss_start__, 0, __sbss_end__ - __sbss_start__);
 }
 

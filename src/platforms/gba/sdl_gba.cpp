@@ -197,6 +197,8 @@ namespace {
 int SDL_Init (Uint32 flags) {
 	(void)flags;
 
+	gbaBootStage(0x7C00);
+
 	irqInit();
 	irqSet(IRQ_VBLANK, onVBlank);
 	irqEnable(IRQ_VBLANK);
