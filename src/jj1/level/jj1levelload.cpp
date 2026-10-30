@@ -682,6 +682,7 @@ int JJ1Level::load (char* fileName, bool checkpoint) {
 	file->loadRLE(reinterpret_cast<unsigned char*>(grid), LW * LH * 2);
 
 	eventStates.clear();
+	for (unsigned int& columns: stateColumns) columns = 0;
 
 	// Ignore tile transparency settings, these are applied based on event type/behaviour
 

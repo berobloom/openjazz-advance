@@ -240,6 +240,7 @@ class JJ1Level : public Level {
 		unsigned char mask[256][8]; ///< Tile masks, as in the level file. Bit x of byte y is solidity at (x, y) of 8 * 8
 		GridElement   grid[LW][LH]; ///< Level grid, by column. All levels are the same size
 		std::vector<JJ1EventState> eventStates; ///< Event states, ordered by grid element
+		unsigned int  stateColumns[LW / 32]; ///< Bit per grid column, set once an event state there exists
 		SDL_Color     skyPalette[MAX_PALETTE_COLORS]; ///< Full palette for sky background
 		bool          sky; ///< Whether or not to use sky background
 		unsigned char skyOrb; ///< The tile to use as the background sun/moon/etc.
@@ -265,8 +266,14 @@ class JJ1Level : public Level {
 		int  loadSprites  (char* fileName);
 		int  loadTiles    (char* fileName);
 
-		JJ1EventState* findEventState (unsigned char gridX, unsigned char gridY);
-		JJ1EventState& eventState     (unsigned char gridX, unsigned char gridY);
+		JJ1EventState* searchEventState (unsigned char gridX, unsigned char gridY);
+		JJ1EventState& eventState       (unsigned char gridX, unsigned char gridY);
+
+		/// The state of the event from the given tile, or nullptr if the event has not been shot or timed
+		JJ1EventState* findEventState (unsigned char gridX, unsigned char gridY) {
+			return ((stateColumns[gridX >> 5] >> (gridX & 31)) & 1)? searchEventState(gridX, gridY): nullptr;
+		}
+
 		void           setEventHits   (unsigned char gridX, unsigned char gridY, unsigned char hits);
 
 	protected:
@@ -304,8 +311,19 @@ class JJ1Level : public Level {
 		difficultyType getDifficulty ();
 		JJ1Event*      getEvents     ();
 		JJ1EventType*  getEvent      (unsigned char gridX, unsigned char gridY);
-		unsigned char  getEventHits  (unsigned char gridX, unsigned char gridY);
-		unsigned int   getEventTime  (unsigned char gridX, unsigned char gridY);
+
+		/// Hits incurred by the event from the given tile
+		unsigned char getEventHits (unsigned char gridX, unsigned char gridY) {
+			JJ1EventState* state = findEventState(gridX, gridY);
+			return state? state->hits: 0;
+		}
+
+		/// Set time of the event from the given tile
+		unsigned int getEventTime (unsigned char gridX, unsigned char gridY) {
+			JJ1EventState* state = findEventState(gridX, gridY);
+			return state? state->time: 0;
+		}
+
 		void           clearEvent    (unsigned char gridX, unsigned char gridY);
 		int            hitEvent      (unsigned char gridX, unsigned char gridY, int hits, JJ1LevelPlayer* source, unsigned int time);
 		void           setEventTime  (unsigned char gridX, unsigned char gridY, unsigned int time);

@@ -347,40 +347,6 @@ JJ1EventType* JJ1Level::getEvent (unsigned char gridX, unsigned char gridY) {
 
 
 /**
- * Get the hits incurred by the event from the given tile.
- *
- * @param gridX X-coordinate of the tile
- * @param gridY Y-coordinate of the tile
- *
- * @return Number of hits
- */
-unsigned char JJ1Level::getEventHits (unsigned char gridX, unsigned char gridY) {
-
-	JJ1EventState* state = findEventState(gridX, gridY);
-
-	return state? state->hits: 0;
-
-}
-
-
-/**
- * Get the set time for the event from the given tile.
- *
- * @param gridX X-coordinate of the tile
- * @param gridY Y-coordinate of the tile
- *
- * @return Time
- */
-unsigned int JJ1Level::getEventTime (unsigned char gridX, unsigned char gridY) {
-
-	JJ1EventState* state = findEventState(gridX, gridY);
-
-	return state? state->time: 0;
-
-}
-
-
-/**
  * Remove the event from the given tile.
  *
  * @param gridX X-coordinate of the tile
@@ -509,14 +475,15 @@ void JJ1Level::setEventHits (unsigned char gridX, unsigned char gridY, unsigned 
 
 
 /**
- * Find the state of the event from the given tile.
+ * Search for the state of the event from the given tile. findEventState()
+ * skips this for grid columns without states.
  *
  * @param gridX X-coordinate of the tile
  * @param gridY Y-coordinate of the tile
  *
  * @return The state, or nullptr if the event has not been shot or timed
  */
-JJ1EventState* JJ1Level::findEventState (unsigned char gridX, unsigned char gridY) {
+JJ1EventState* JJ1Level::searchEventState (unsigned char gridX, unsigned char gridY) {
 
 	unsigned short cell = (gridY * LW) + gridX;
 	auto it = std::lower_bound(eventStates.begin(), eventStates.end(), cell,
@@ -543,8 +510,10 @@ JJ1EventState& JJ1Level::eventState (unsigned char gridX, unsigned char gridY) {
 	auto it = std::lower_bound(eventStates.begin(), eventStates.end(), cell,
 		[](const JJ1EventState& state, unsigned short c) { return state.cell < c; });
 
-	if (it == eventStates.end() || it->cell != cell)
+	if (it == eventStates.end() || it->cell != cell) {
 		it = eventStates.insert(it, {cell, 0, 0});
+		stateColumns[gridX >> 5] |= 1u << (gridX & 31);
+	}
 
 	return *it;
 
