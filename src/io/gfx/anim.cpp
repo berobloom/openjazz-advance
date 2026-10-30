@@ -128,42 +128,6 @@ void Anim::setFrameData (Sprite *sprite, signed char x, signed char y) {
 
 
 /**
- * Determine the width of the current frame.
- *
- * @return The width of the current frame
- */
-int Anim::getWidth () {
-
-	return sprites[frame]->getWidth();
-
-}
-
-
-/**
- * Determine the height of the current frame.
- *
- * @return The height of the current frame
- */
-int Anim::getHeight () {
-
-	return sprites[frame]->getHeight();
-
-}
-
-
-/**
- * Determine the length of the animation.
- *
- * @return The length of the animation
- */
-int Anim::getLength () {
-
-	return frames;
-
-}
-
-
-/**
  * Determine the bullet generation x-coordinate of the current frame.
  *
  * @return The bullet generation x-coordinate
@@ -207,42 +171,6 @@ fixed Anim::getAccessoryShootX () {
 fixed Anim::getAccessoryShootY () {
 
 	return ITOF(shootY + accessoryY + yOffsets[frame]);
-
-}
-
-
-/**
- * Determine the vertical offset.
- *
- * @return The vertical offset
- */
-fixed Anim::getOffset () {
-
-	return -ITOF(yOffset);
-
-}
-
-
-/**
- * Determine the horizontal offset of the current frame.
- *
- * @return The horizontal offset
- */
-fixed Anim::getXOffset () {
-
-	return ITOF(sprites[frame]->getXOffset() + (xOffsets[frame] << 2) + 1);
-
-}
-
-
-/**
- * Determine the vertical offset of the current frame.
- *
- * @return The vertical offset
- */
-fixed Anim::getYOffset () {
-
-	return ITOF(sprites[frame]->getYOffset() + yOffsets[frame] + 1);
 
 }
 

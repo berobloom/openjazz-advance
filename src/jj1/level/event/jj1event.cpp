@@ -106,18 +106,6 @@ JJ1Event* JJ1Event::remove (bool permanently) {
 
 
 /**
- * Get the next event
- *
- * @return The next event
- */
-JJ1Event * JJ1Event::getNext () {
-
-	return next;
-
-}
-
-
-/**
  * Initiate the destruction of the event
  *
  * @param ticks Time
@@ -160,30 +148,6 @@ bool JJ1Event::hit (JJ1LevelPlayer *source, int hits, unsigned int ticks) {
 
 	// Register hit
 	return true;
-
-}
-
-
-/**
- * Determine whether or not the event is an enemy
- *
- * @return Whether or not the event is an enemy
- */
-bool JJ1Event::isEnemy () {
-
-	return set->strength && (set->modifier == 0);
-
-}
-
-
-/**
- * Determine whether or not the event is from the given position
- *
- * @return Whether or not the event is from the given position
- */
-bool JJ1Event::isFrom (unsigned char gX, unsigned char gY) {
-
-	return (gX == gridX) && (gY == gridY);
 
 }
 
@@ -273,6 +237,27 @@ void JJ1Event::setAnimFrame (int frame, bool looping) {
 }
 
 
+JJ1Event::KeepArea JJ1Event::keepArea;
+
+
+/**
+ * Work out the area outside of which events are removed, from the view, before
+ * the events step
+ */
+void JJ1Event::setKeepArea () {
+
+	keepArea.left = viewX - F192;
+	keepArea.right = viewX + ITOF(canvasW) + F192;
+	keepArea.top = viewY - F160;
+	keepArea.bottom = viewY + ITOF(canvasH) + F160;
+	keepArea.gridLeft = FTOT(viewX) - 1;
+	keepArea.gridRight = ITOT(FTOI(viewX) + canvasW) + 1;
+	keepArea.gridTop = FTOT(viewY) - 1;
+	keepArea.gridBottom = ITOT(FTOI(viewY) + canvasH) + 1;
+
+}
+
+
 /**
  * Functionality required by all event types on each iteration
  *
@@ -288,12 +273,10 @@ JJ1EventType* JJ1Event::prepareStep () {
 	// If the event and its origin are off-screen, the event is not in the
 	// process of self-destruction, remove it
 	if (((animType & ~1) != E_LFINISHANIM) &&
-		((x < viewX - F192) || (x > viewX + ITOF(canvasW) + F192) ||
-		(y < viewY - F160) || (y > viewY + ITOF(canvasH) + F160)) &&
-		((gridX < FTOT(viewX) - 1) ||
-		(gridX > ITOT(FTOI(viewX) + canvasW) + 1) ||
-		(gridY < FTOT(viewY) - 1) ||
-		(gridY > ITOT(FTOI(viewY) + canvasH) + 1))) return NULL;
+		((x < keepArea.left) || (x > keepArea.right) ||
+		(y < keepArea.top) || (y > keepArea.bottom)) &&
+		((gridX < keepArea.gridLeft) || (gridX > keepArea.gridRight) ||
+		(gridY < keepArea.gridTop) || (gridY > keepArea.gridBottom))) return NULL;
 
 	return set;
 

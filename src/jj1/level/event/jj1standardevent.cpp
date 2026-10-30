@@ -196,7 +196,9 @@ void JJ1StandardEvent::move (unsigned int ticks) {
 		case 6:
 		case 7:
 
-			node = (node + FH) % ITOF(level->path[set->multiA].length);
+			// The node stays below the path's length, so this is the same as %
+			node += FH;
+			if (node >= ITOF(level->path[set->multiA].length)) node -= ITOF(level->path[set->multiA].length);
 
 			// Use the path from the level file
 			dx = TTOF(gridX) + ITOF(level->path[set->multiA].x[FTOI(node)]) - x;

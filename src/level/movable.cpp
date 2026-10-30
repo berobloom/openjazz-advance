@@ -54,27 +54,3 @@ fixed Movable::getDrawY (int change) {
 }
 
 
-/**
- * Get the basic x-coordinate of the Movable.
- *
- * @return The x-coordinate
- */
-fixed Movable::getX () {
-
-	return x;
-
-}
-
-
-/**
- * Get the basic y-coordinate of the Movable.
- *
- * @return The y-coordinate
- */
-fixed Movable::getY () {
-
-	return y;
-
-}
-
-

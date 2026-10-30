@@ -131,7 +131,7 @@ class Level {
 		virtual ~Level();
 
 		void         addTimer (int seconds);
-		LevelStage   getStage ();
+		LevelStage   getStage () { return stage; } ///< Current level stage
 		void         setStage (LevelStage stage);
 		virtual void receive  (unsigned char* buffer) = 0;
 };

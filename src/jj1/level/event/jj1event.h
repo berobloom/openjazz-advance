@@ -63,6 +63,12 @@ class JJ1LevelPlayer;
 class JJ1Event : public Movable {
 
 	private:
+		/// Area outside of which events and their origins are removed, worked out once per step
+		static struct KeepArea {
+			fixed left, right, top, bottom;
+			int   gridLeft, gridRight, gridTop, gridBottom;
+		} keepArea;
+
 		void calcDimensions ();
 
 	protected:
@@ -91,12 +97,15 @@ class JJ1Event : public Movable {
 
 		virtual ~JJ1Event ();
 
-		JJ1Event*      getNext        ();
+		static void    setKeepArea    ();
+
+		JJ1Event*      getNext        () { return next; } ///< Next event
 		unsigned char  getGridX       () const { return gridX; } ///< Grid X-coordinate of the event's origin
 		unsigned char  getGridY       () const { return gridY; } ///< Grid Y-coordinate of the event's origin
-		bool           hit           (JJ1LevelPlayer *source, int hits, unsigned int ticks);
-		bool           isEnemy        ();
-		bool           isFrom         (unsigned char gX, unsigned char gY);
+		bool           hit            (JJ1LevelPlayer *source, int hits, unsigned int ticks);
+		bool           isEnemy        () { return set->strength && (set->modifier == 0); } ///< Whether or not the event is an enemy
+		/// Whether or not the event is from the given grid position
+		bool           isFrom         (unsigned char gX, unsigned char gY) { return (gX == gridX) && (gY == gridY); }
 		bool           overlap        (fixed areaX, fixed areaY, fixed areaWidth, fixed areaHeight);
 
 		virtual JJ1Event* step        (unsigned int ticks) = 0;

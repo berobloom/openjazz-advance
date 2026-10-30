@@ -25,10 +25,10 @@
 
 
 #include "OpenJazz.h"
+#include "sprite.h"
 
 // Classes
 
-class Sprite;
 struct SDL_Color;
 
 /// Animation
@@ -58,16 +58,18 @@ class Anim {
 		void  setData               (int length, signed char sX, signed char sY, signed char aX, signed char aY, unsigned char a, signed char y);
 		void  setFrame              (int nextFrame, bool looping);
 		void  setFrameData          (Sprite *frameSprite, signed char x, signed char y);
-		int   getWidth              ();
-		int   getHeight             ();
-		int   getLength             ();
+		int   getWidth              () { return sprites[frame]->getWidth(); } ///< Width of the current frame
+		int   getHeight             () { return sprites[frame]->getHeight(); } ///< Height of the current frame
+		int   getLength             () { return frames; } ///< Length of the animation
 		fixed getShootX             ();
 		fixed getShootY             ();
 		fixed getAccessoryShootX    ();
 		fixed getAccessoryShootY    ();
-		fixed getOffset             ();
-		fixed getXOffset            ();
-		fixed getYOffset            ();
+		fixed getOffset             () { return -ITOF(yOffset); } ///< Vertical offset
+		/// Horizontal offset of the current frame
+		fixed getXOffset            () { return ITOF(sprites[frame]->getXOffset() + (xOffsets[frame] << 2) + 1); }
+		/// Vertical offset of the current frame
+		fixed getYOffset            () { return ITOF(sprites[frame]->getYOffset() + yOffsets[frame] + 1); }
 		void  draw                  (fixed x, fixed y, int accessories = 7);
 		void  drawScaled            (fixed x, fixed y, fixed scale);
 		void  setPalette            (SDL_Color *palette, int start, int amount);

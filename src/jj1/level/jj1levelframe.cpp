@@ -164,6 +164,7 @@ int JJ1Level::step () {
 	for (x = 0; x < nPlayers; x++) players[x].getJJ1LevelPlayer()->control(ticks);
 
 	// Process active events
+	JJ1Event::setKeepArea();
 	if (events) events = stepList(events, ticks);
 
 	// Apply as much of those trajectories as possible, without going into the

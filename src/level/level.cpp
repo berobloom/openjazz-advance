@@ -571,13 +571,3 @@ void Level::setStage (LevelStage newStage) {
 }
 
 
-/**
- * Determine the current level stage.
- *
- * @return The current level stage.
- */
-LevelStage Level::getStage () {
-
-	return stage;
-
-}

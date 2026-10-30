@@ -36,8 +36,8 @@ class Movable {
 		fixed getDrawY (int change);
 
 	public:
-		fixed getX ();
-		fixed getY ();
+		fixed getX () { return x; } ///< Basic x-coordinate
+		fixed getY () { return y; } ///< Basic y-coordinate
 
 };
 
