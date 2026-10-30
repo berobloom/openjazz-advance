@@ -92,7 +92,9 @@ class JJ1Event : public Movable {
 		virtual ~JJ1Event ();
 
 		JJ1Event*      getNext        ();
-		bool           hit            (JJ1LevelPlayer *source, int hits, unsigned int ticks);
+		unsigned char  getGridX       () const { return gridX; } ///< Grid X-coordinate of the event's origin
+		unsigned char  getGridY       () const { return gridY; } ///< Grid Y-coordinate of the event's origin
+		bool           hit           (JJ1LevelPlayer *source, int hits, unsigned int ticks);
 		bool           isEnemy        ();
 		bool           isFrom         (unsigned char gX, unsigned char gY);
 		bool           overlap        (fixed areaX, fixed areaY, fixed areaWidth, fixed areaHeight);

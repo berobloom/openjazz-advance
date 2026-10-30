@@ -78,7 +78,36 @@ int JJ1Level::step () {
 	int lastY = std::min(ITOT(FTOI(viewY) + viewH) + 5, LH);
 	auto difficulty = +getDifficulty();
 
+	// Mark the grid elements whose events exist, one bit each, instead of
+	// searching the list of events for every grid element with an event.
+	// Kept between calls, and never freed: a destructor at exit costs the GBA RAM
+	static unsigned int* existing = nullptr;
+	static int existingCapacity = 0;
+
+	int rowWords = (lastX - firstX + 31) >> 5;
+	int words = (lastY > firstY)? rowWords * (lastY - firstY): 0;
+
+	if (words > existingCapacity) {
+		delete[] existing;
+		existingCapacity = words;
+		existing = new unsigned int[existingCapacity];
+	}
+
+	for (x = 0; x < words; x++) existing[x] = 0;
+
+	for (event = events; event; event = event->getNext()) {
+
+		int gX = event->getGridX() - firstX;
+		int gY = event->getGridY() - firstY;
+
+		if ((gX >= 0) && (gX < lastX - firstX) && (gY >= 0) && (gY < lastY - firstY))
+			existing[(gY * rowWords) + (gX >> 5)] |= 1u << (gX & 31);
+
+	}
+
 	for (y = firstY; y < lastY; y++) {
+
+		const unsigned int* existingRow = existing + ((y - firstY) * rowWords);
 
 		for (x = firstX; x < lastX; x++) {
 
@@ -87,19 +116,9 @@ int JJ1Level::step () {
 			if (gridEvent && (gridEvent < 121) &&
 				(+eventSet[gridEvent].difficulty <= difficulty)) {
 
-				event = events;
-
-				while (event) {
-
-					// If the event has been found, stop searching
-					if (event->isFrom(x, y)) break;
-
-					event = event->getNext();
-
-				}
-
-				// If the event wasn't found, create it
-				if (!event) {
+				// If the event wasn't found, create it (events created in this
+				// loop come from grid elements not visited yet, so need no mark)
+				if (!((existingRow[(x - firstX) >> 5] >> ((x - firstX) & 31)) & 1)) {
 
 					switch (getEvent(x, y)->movement) {
 
