@@ -196,12 +196,13 @@ void gbaBootStage (unsigned short color) {
 }
 
 
-/* Cartridge ROM at 3/2 wait states with prefetch, SRAM at 8. Some flash
-   cartridges can't keep up with the faster 3/1 and crash right after the
-   switch, leaving a white screen. */
+/* Cartridge ROM at 4/2 wait states with prefetch, SRAM at 8. Flash
+   cartridges may not keep up with faster timing and crash right after the
+   switch, leaving a white screen: one did at 3/1 from the start, and at 3/2
+   after working for a while. */
 __attribute__((constructor(101))) static void initRomTiming () {
 	gbaBootStage(0x001F);
-	*reinterpret_cast<volatile unsigned short*>(0x4000204) = 0x4007;
+	*reinterpret_cast<volatile unsigned short*>(0x4000204) = 0x4003;
 	gbaBootStage(0x03FF);
 }
 
