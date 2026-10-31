@@ -69,6 +69,7 @@ class JJ1Bullet : public Movable {
 		JJ1Bullet* remove ();
 
 	public:
+		template <class T> friend T** listArray (T* first, int& count);
 		template <class T> friend T* stepList (T* first, unsigned int ticks);
 
 		JJ1Bullet  (JJ1Bullet* nextBullet, JJ1LevelPlayer* sourcePlayer, fixed startX, fixed startY, signed char *bullet, int newDirection, unsigned int ticks);

@@ -183,6 +183,10 @@ void Sprite::draw (int x, int y, bool includeOffsets) {
 
 	}
 
+	// Skip sprites entirely outside the canvas, which the blit would clip away
+	if ((dst.x >= canvas->w) || (dst.y >= canvas->h) ||
+		(dst.x + pixels->w <= 0) || (dst.y + pixels->h <= 0)) return;
+
 	SDL_BlitSurface(pixels, NULL, canvas, &dst);
 
 }

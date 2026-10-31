@@ -1010,8 +1010,6 @@ JJ1Event* JJ1StandardEvent::step (unsigned int ticks) {
  */
 void JJ1StandardEvent::draw (unsigned int ticks, int change) {
 
-	if (next) next->draw(ticks, change);
-
 	// Uncomment the following to see the raw location
 	/*drawRect(FTOI(getDrawX(change)),
 		FTOI(getDrawY(change) - height), FTOI(width),

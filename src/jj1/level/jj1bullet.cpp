@@ -249,8 +249,6 @@ JJ1Bullet* JJ1Bullet::step (unsigned int ticks) {
  */
 void JJ1Bullet::draw (int change) {
 
-	if (next) next->draw(change);
-
 	// Show the bullet
 	sprite->draw(FTOI(getDrawX(change)), FTOI(getDrawY(change)), false);
 

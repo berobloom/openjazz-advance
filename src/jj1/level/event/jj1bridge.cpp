@@ -116,8 +116,6 @@ void JJ1Bridge::draw (unsigned int ticks, int change) {
 
 	int count;
 
-	if (next) next->draw(ticks, change);
-
 	// If the event has been removed from the grid, do not show it
 	if (!set) return;
 

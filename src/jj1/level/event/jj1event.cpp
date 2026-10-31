@@ -284,20 +284,20 @@ JJ1EventType* JJ1Event::prepareStep () {
 
 
 /**
- * Draw the event's energy bar
+ * Draw the event's energy bar, if it is a guardian
  *
  * @param ticks Time
+ *
+ * @return Whether or not the event is a guardian
  */
-void JJ1Event::drawEnergy (unsigned int ticks) {
+bool JJ1Event::drawEnergy (unsigned int ticks) {
 
 	Anim* miscAnim;
 	int hits;
 
 	if (!set || set->modifier != 8) {
 
-		if (next) next->drawEnergy(ticks);
-
-		return;
+		return false;
 
 	} else if (set->strength) {
 
@@ -322,5 +322,7 @@ void JJ1Event::drawEnergy (unsigned int ticks) {
 		video.drawRect(canvasW - 40, hits + 40, 12, 100 - hits, (ticks < flashTime)? 0: 32);
 
 	}
+
+	return true;
 
 }

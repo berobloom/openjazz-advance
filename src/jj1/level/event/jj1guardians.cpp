@@ -116,8 +116,6 @@ JJ1Event* DeckGuardian::step (unsigned int ticks) {
  */
 void DeckGuardian::draw (unsigned int ticks, int change) {
 
-	if (next) next->draw(ticks, change);
-
 	// If the event has been removed from the grid, do not show it
 	if (!set) return;
 
@@ -399,8 +397,6 @@ void MedGuardian::draw(unsigned int ticks, int change) {
 
 	Anim *stageAnim;
 	unsigned char frame;
-
-	if (next) next->draw(ticks, change);
 
 	fixed xChange = getDrawX(change);
 	fixed yChange = getDrawY(change);

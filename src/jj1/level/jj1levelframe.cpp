@@ -411,7 +411,7 @@ void JJ1Level::draw () {
 
 
 	// Show active events
-	if (events) events->draw(ticks, change);
+	if (events) drawList(events, ticks, change);
 
 
 	// Show the players
@@ -419,7 +419,7 @@ void JJ1Level::draw () {
 
 
 	// Show bullets
-	if (bullets) bullets->draw(change);
+	if (bullets) drawList(bullets, change);
 
 
 #ifdef OJ_TILED_LEVEL
@@ -483,7 +483,7 @@ void JJ1Level::draw () {
 	video.drawRect(0, FTOI(waterLevel - viewY) + 10, canvasW, 1, 24);
 
 	// Show active guardian's energy bar
-	if (events) events->drawEnergy(ticks);
+	for (JJ1Event* event = events; event && !event->drawEnergy(ticks); event = event->getNext());
 
 
 	// If this is a competitive game, draw the score

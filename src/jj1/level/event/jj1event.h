@@ -93,6 +93,7 @@ class JJ1Event : public Movable {
 		JJ1EventType* prepareStep ();
 
 	public:
+		template <class T> friend T** listArray (T* first, int& count);
 		template <class T> friend T* stepList (T* first, unsigned int ticks);
 
 		virtual ~JJ1Event ();
@@ -110,7 +111,7 @@ class JJ1Event : public Movable {
 
 		virtual JJ1Event* step        (unsigned int ticks) = 0;
 		virtual void      draw        (unsigned int ticks, int change) = 0;
-		void              drawEnergy  (unsigned int ticks);
+		bool              drawEnergy  (unsigned int ticks);
 
 };
 
