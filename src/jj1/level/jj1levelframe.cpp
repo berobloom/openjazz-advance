@@ -108,13 +108,15 @@ int JJ1Level::step () {
 	for (y = firstY; y < lastY; y++) {
 
 		const unsigned int* existingRow = existing + ((y - firstY) * rowWords);
+		const GridElement* ge = &grid[firstX][y];
 
-		for (x = firstX; x < lastX; x++) {
+		for (x = firstX; x < lastX; x++, ge += LH) {
 
-			int gridEvent = grid[x][y].event();
+			int gridEvent = ge->event();
 
-			if (gridEvent && (gridEvent < 121) &&
-				(+eventSet[gridEvent].difficulty <= difficulty)) {
+			if (!gridEvent) continue;
+
+			if ((gridEvent < 121) && (+eventSet[gridEvent].difficulty <= difficulty)) {
 
 				// If the event wasn't found, create it (events created in this
 				// loop come from grid elements not visited yet, so need no mark)

@@ -95,30 +95,6 @@ void Sprite::setPixels (unsigned char *data, int width, int height, unsigned cha
 
 
 /**
- * Get the width of the sprite.
- *
- * @return The width
- */
-int Sprite::getWidth () {
-
-	return pixels->w;
-
-}
-
-
-/**
- * Get the height of the sprite.
- *
- * @return The height
- */
-int Sprite::getHeight() {
-
-	return pixels->h;
-
-}
-
-
-/**
  * Set the sprite's palette, or a portion thereof.
  *
  * @param palette New palette

@@ -56,7 +56,11 @@ class Anim {
 		~Anim                       ();
 
 		void  setData               (int length, signed char sX, signed char sY, signed char aX, signed char aY, unsigned char a, signed char y);
-		void  setFrame              (int nextFrame, bool looping);
+		/// Set the current frame, looping or stopping at the end of the animation
+		void  setFrame              (int nextFrame, bool looping) {
+			if (looping) frame = nextFrame % frames;
+			else frame = (nextFrame >= frames)? frames - 1: nextFrame;
+		}
 		void  setFrameData          (Sprite *frameSprite, signed char x, signed char y);
 		int   getWidth              () { return sprites[frame]->getWidth(); } ///< Width of the current frame
 		int   getHeight             () { return sprites[frame]->getHeight(); } ///< Height of the current frame

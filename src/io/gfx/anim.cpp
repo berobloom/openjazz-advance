@@ -98,20 +98,6 @@ void Anim::setData (int length, signed char sX, signed char sY, signed char aX, 
 
 
 /**
- * Set current frame.
- *
- * @param nextFrame The frame to use
- * @param looping Whether the animation should stop at the end or loop
- */
-void Anim::setFrame (int nextFrame, bool looping) {
-
-	if (looping) frame = nextFrame % frames;
-	else frame = (nextFrame >= frames)? frames - 1: nextFrame;
-
-}
-
-
-/**
  * Set the data for the current frame.
  *
  * @param sprite Sprite to use

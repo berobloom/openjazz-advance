@@ -24,11 +24,9 @@
 #define _SPRITE_H
 
 #include "OpenJazz.h"
+#include "SDL_wrapper.h"
 
 // Class
-
-struct SDL_Surface;
-struct SDL_Color;
 
 /// Sprite
 class Sprite {
@@ -45,8 +43,8 @@ class Sprite {
 		void clearPixels    ();
 		void setOffset      (short int x, short int y);
 		void setPixels      (unsigned char* data, int width, int height, unsigned char key);
-		int  getWidth       ();
-		int  getHeight      ();
+		int  getWidth       () { return pixels->w; } ///< Width of the sprite
+		int  getHeight      () { return pixels->h; } ///< Height of the sprite
 		int  getXOffset     () { return xOffset; } ///< Horizontal offset
 		int  getYOffset     () { return yOffset; } ///< Vertical offset
 		void draw           (int x, int y, bool includeOffsets = true);
