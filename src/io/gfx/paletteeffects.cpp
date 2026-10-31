@@ -36,6 +36,27 @@
 
 
 /**
+ * Copy a colour field by field, as copying the structure calls memcpy() on
+ * platforms that only align it to bytes.
+ *
+ * @param to The colour to set
+ * @param from The colour to copy
+ */
+static inline void copyColor (SDL_Color& to, const SDL_Color& from) {
+
+	to.r = from.r;
+	to.g = from.g;
+	to.b = from.b;
+#if OJ_SDL3 || OJ_SDL2
+	to.a = from.a;
+#else
+	to.unused = from.unused;
+#endif
+
+}
+
+
+/**
  * Create a new palette effect.
  *
  * @param nextPE The next palette effect
@@ -409,18 +430,21 @@ RotatePaletteEffect::RotatePaletteEffect
 void RotatePaletteEffect::apply (SDL_Color* shownPalette, bool direct, int mspf, bool isStatic) {
 
 	SDL_Color* currentPalette;
-	int count;
+	int count, from;
 
 	// Apply the next palette effect
 	if (next) next->apply(shownPalette, direct, mspf, isStatic);
 
-	currentPalette = video.getPalette();
+	currentPalette = video.getPalette() + first;
+
+	// Colour count comes from colour (count + position) % amount
+	from = FTOI(position) % amount;
 
 	for (count = 0; count < amount; count++) {
 
-		memcpy(shownPalette + first + count,
-			currentPalette + first +
-			((count + FTOI(position)) % amount), sizeof(SDL_Color));
+		copyColor(shownPalette[first + count], currentPalette[from]);
+
+		if (++from == amount) from = 0;
 
 	}
 
@@ -552,13 +576,10 @@ void P2DPaletteEffect::apply (SDL_Color* shownPalette, bool direct, int mspf, bo
 
 	for (count = 0; count < amount >> 3; count++) {
 
-		for (j = 0; j < 8; j++) {
+		const SDL_Color* row = currentPalette + first + (((count + y) % 8) << 3);
 
-			memcpy(shownPalette + first + (count << 3) + j,
-				currentPalette + first + (((count + y) % 8) << 3) +
-				((j + x) % 8), sizeof(SDL_Color));
-
-		}
+		for (j = 0; j < 8; j++)
+			copyColor(shownPalette[first + (count << 3) + j], row[(j + x) % 8]);
 
 	}
 
@@ -605,12 +626,16 @@ void P1DPaletteEffect::apply (SDL_Color* shownPalette, bool direct, int mspf, bo
 	currentPalette = video.getPalette();
 	position = viewX + viewY;
 
+	// Colour i comes from colour (i + from) % amount. The product overflows
+	// far into the level, so the remainder can be negative
+	int from = amount - 1 - (FTOI(MUL(position, speed)) % amount);
+	if (from >= amount) from -= amount;
+
 	for (int i = 0; i < amount; i++) {
 
-		memcpy(shownPalette + first + i,
-			currentPalette + first + ((i +
-				(amount - 1 - (FTOI(MUL(position, speed)) % amount))) % amount),
-			sizeof(SDL_Color));
+		copyColor(shownPalette[first + i], currentPalette[first + from]);
+
+		if (++from == amount) from = 0;
 
 	}
 
@@ -661,11 +686,13 @@ void WaterPaletteEffect::apply (SDL_Color* shownPalette, bool direct, int mspf, 
 
 	if (position < depth) {
 
+		int brightness = 1023 - DIV(position, depth);
+
 		for (int i = 0; i < MAX_PALETTE_COLORS; i++) {
 
-			shownPalette[i].r = FTOI(currentPalette[i].r * (1023 - DIV(position, depth)));
-			shownPalette[i].g = FTOI(currentPalette[i].g * (1023 - DIV(position, depth)));
-			shownPalette[i].b = FTOI(currentPalette[i].b * (1023 - DIV(position, depth)));
+			shownPalette[i].r = FTOI(currentPalette[i].r * brightness);
+			shownPalette[i].g = FTOI(currentPalette[i].g * brightness);
+			shownPalette[i].b = FTOI(currentPalette[i].b * brightness);
 
 		}
 
